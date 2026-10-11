@@ -1,4 +1,377 @@
 {
+  "0.4.7": {
+    "en": {
+      "new": [
+        "Deep links: the address names the PC, workspace, pane and view, and opens there.",
+        "A Claude Code or Codex plan shows as progress in the header and opens as a flow or list.",
+        "Chat reads Grok, Antigravity (experimental), Hermes and OpenCode 1.x natively.",
+        "Mermaid blocks in chat are drawn as diagrams, and the file viewer renders Markdown.",
+        "New workspace offers your three most recent folders.",
+        "Turkish joins the languages, and Colors gains the Forest palette."
+      ],
+      "improved": [
+        "On a phone, sheets, the drawer and the chat move like a native app's.",
+        "A split pane under 80 columns shrinks its font so programs like btop still fit.",
+        "Chat follows the agent's transcript as it is written, not on a timer.",
+        "Terminal: pick the cursor shape, pinch to resize the font, hold an arrow to repeat it.",
+        "Anonymous counts also name the appearance settings you changed; the notice shows again.",
+        "Usage meters can show each limit's pace and when it runs out (turn it on in Settings)."
+      ],
+      "fixed": [
+        "A phone shows a split tab one pane at a time again, at full width.",
+        "Markdown opened in a new tab stays rendered.",
+        "A message stopped right after sending returns to the message box instead of sticking.",
+        "Push alerts stay quiet while you are using the app on any device.",
+        "Back and Forward follow a pane after it is moved."
+      ]
+    },
+    "ko": {
+      "new": [
+        "딥 링크: 주소가 PC, 워크스페이스, 패널, 보기를 가리키고 그 자리에서 열립니다.",
+        "Claude Code와 Codex의 계획이 헤더에 진행도로 보이고, 흐름도나 목록으로 열립니다.",
+        "Grok, Antigravity(실험적), Hermes, OpenCode 1.x의 대화를 채팅으로 바로 읽습니다.",
+        "채팅의 mermaid 블록을 도표로 그리고, 파일 뷰어가 Markdown을 그려 보여 줍니다.",
+        "새 워크스페이스에서 최근에 쓴 폴더 세 개를 바로 고를 수 있습니다.",
+        "터키어가 추가되고, 색상에 Forest 팔레트가 생겼습니다."
+      ],
+      "improved": [
+        "휴대폰에서 시트, 서랍, 채팅이 네이티브 앱처럼 움직입니다.",
+        "80칸보다 좁은 분할 패널은 글자를 줄여 btop 같은 프로그램이 그대로 들어갑니다.",
+        "채팅이 일정 간격으로 다시 읽는 대신, 에이전트 기록이 쓰이는 대로 따라갑니다.",
+        "터미널: 커서 모양 선택, 두 손가락으로 글자 크기 조절, 화살표 길게 눌러 반복.",
+        "익명 집계에 기본값에서 바꾼 화면 설정의 이름이 포함되며, 안내가 한 번 더 표시됩니다.",
+        "사용량 표시에서 각 한도의 소진 속도와 바닥날 시점을 볼 수 있습니다(설정에서 켭니다)."
+      ],
+      "fixed": [
+        "휴대폰에서 분할 탭이 다시 패널 하나씩 전체 폭으로 보입니다.",
+        "새 탭에서 연 Markdown 파일이 그려진 채로 보입니다.",
+        "보낸 직후 멈춘 메시지는 막히지 않고 메시지 입력란으로 돌아옵니다.",
+        "어느 기기에서든 앱을 쓰는 동안에는 푸시 알림이 오지 않습니다.",
+        "패널을 옮긴 뒤에도 뒤로·앞으로 가기가 그 패널을 따라갑니다."
+      ]
+    },
+    "ja": {
+      "new": [
+        "ディープリンク: アドレスがPC、ワークスペース、ペイン、表示を示し、その場所で開きます。",
+        "Claude CodeとCodexのプランがヘッダーに進捗として表示され、フローまたはリストで開けます。",
+        "Grok、Antigravity（実験的）、Hermes、OpenCode 1.xの会話をチャットで直接読み込みます。",
+        "チャットのmermaidブロックを図として描画し、ファイルビューアはMarkdownを表示します。",
+        "新しいワークスペースで、最近使った3つのフォルダーをすぐ選べます。",
+        "トルコ語が加わり、配色にForestパレットが追加されました。"
+      ],
+      "improved": [
+        "スマートフォンで、シート、ドロワー、チャットがネイティブアプリのように動きます。",
+        "80桁未満の分割ペインは文字を小さくし、btopなどのプログラムが収まります。",
+        "チャットは一定間隔で読み直す代わりに、エージェントの記録が書かれるたびに追従します。",
+        "ターミナル: カーソル形状の選択、ピンチで文字サイズ変更、矢印キー長押しで連続入力。",
+        "匿名カウントに既定値から変更した外観設定の名前が含まれ、案内がもう一度表示されます。",
+        "使用量メーターで各上限の消費ペースと尽きる時刻を表示できます（設定で有効化）。"
+      ],
+      "fixed": [
+        "スマートフォンで、分割タブが再びペインを1つずつ全幅で表示します。",
+        "新しいタブで開いたMarkdownファイルが描画されたまま表示されます。",
+        "送信直後に停止したメッセージは詰まらず、メッセージ欄に戻ります。",
+        "どの端末でもアプリを使用中はプッシュ通知が届きません。",
+        "ペインを移動した後も、戻る・進むがそのペインを追います。"
+      ]
+    },
+    "zh": {
+      "new": [
+        "深层链接：地址指明 PC、工作区、窗格和视图，并在该位置打开。",
+        "Claude Code 和 Codex 的计划在标题栏显示进度，可用流程图或列表打开。",
+        "聊天可直接读取 Grok、Antigravity（实验性）、Hermes 和 OpenCode 1.x 的对话。",
+        "聊天中的 mermaid 代码块绘制为图表，文件查看器可渲染 Markdown。",
+        "新建工作区时可直接选择最近使用的三个文件夹。",
+        "新增土耳其语，配色新增 Forest 调色板。"
+      ],
+      "improved": [
+        "在手机上，面板、抽屉和聊天的动效像原生应用一样。",
+        "不足 80 列的分屏窗格会缩小字号，让 btop 等程序仍能显示。",
+        "聊天随代理记录的写入而更新，不再按固定间隔重新读取。",
+        "终端：可选择光标形状，双指缩放字号，长按方向键可连续输入。",
+        "匿名统计会包含已从默认值更改的外观设置名称，并会再次显示提示。",
+        "用量仪表可显示各限额的消耗速度及用完时间（需在设置中开启）。"
+      ],
+      "fixed": [
+        "手机上的分屏标签页恢复为一次显示一个窗格，占满整个宽度。",
+        "在新标签页中打开的 Markdown 文件保持渲染后的显示。",
+        "发送后立即停止的消息不再卡住，而是回到消息框。",
+        "在任何设备上使用应用时，都不会收到推送提醒。",
+        "移动窗格后，后退和前进仍会跟随该窗格。"
+      ]
+    },
+    "tr": {
+      "new": [
+        "Derin bağlantılar: adres bilgisayarı, çalışma alanını, paneli ve görünümü gösterir.",
+        "Claude Code ve Codex planı başlıkta ilerleme olarak görünür; akış veya listeyle açılır.",
+        "Sohbet; Grok, Antigravity (deneysel), Hermes ve OpenCode 1.x konuşmalarını doğrudan okur.",
+        "Sohbetteki mermaid blokları diyagram olarak çizilir; dosya görüntüleyici Markdown'ı işler.",
+        "Yeni çalışma alanı, en son kullandığınız üç klasörü sunar.",
+        "Türkçe eklendi ve Renkler'e Forest paleti geldi."
+      ],
+      "improved": [
+        "Telefonda sayfalar, çekmece ve sohbet yerel bir uygulama gibi hareket eder.",
+        "80 sütundan dar bölünmüş panel yazı tipini küçültür; btop gibi programlar sığar.",
+        "Sohbet, belirli aralıklarla yeniden okumak yerine ajanın kaydı yazıldıkça güncellenir.",
+        "Terminal: imleç şeklini seçin, yazıyı iki parmakla boyutlandırın, ok tuşunu basılı tutun.",
+        "Anonim sayaçlar, varsayılandan değiştirilen görünüm ayarlarının adlarını da içerir.",
+        "Kullanım göstergeleri her limitin hızını ve bitiş zamanını gösterebilir (Ayarlar'da açın)."
+      ],
+      "fixed": [
+        "Telefonda bölünmüş sekme yeniden tek seferde bir paneli tam genişlikte gösterir.",
+        "Yeni sekmede açılan Markdown dosyaları işlenmiş olarak kalır.",
+        "Gönderildikten hemen sonra durdurulan mesaj takılmaz, mesaj kutusuna geri döner.",
+        "Uygulamayı herhangi bir cihazda kullanırken anlık bildirim gelmez.",
+        "Bir panel taşındıktan sonra Geri ve İleri o paneli izler."
+      ]
+    }
+  },
+  "0.4.6": {
+    "en": {
+      "new": [
+        "Split, zoom, swap and resize panes from the web; a split tab shows all its panes at once.",
+        "Search a pane's terminal history, with highlighted matches and a history scrollbar.",
+        "The command palette works like herdr's Goto picker and runs herdr plugin actions.",
+        "Reorder tabs, and move a pane to another tab or workspace, as in herdr's own window.",
+        "Agents show the names set with herdr, and Settings lists herdr's agent integrations."
+      ],
+      "improved": [
+        "Answers are compressed, so opening a long chat is faster over a slow connection.",
+        "Changes made in herdr's own window show in the web at once.",
+        "A phone that leaves the app gives the pane's size back to herdr's window right away."
+      ],
+      "fixed": [
+        "Typing never reaches a pane that another connection is using.",
+        "Held messages keep Send now after you switch tabs, workspaces or PCs.",
+        "Codex chats on Windows are found even when the folder's letter case differs.",
+        "An OmO turn that ended on a model error reads READY, not DONE.",
+        "A remote PC that slept during a bridge update shows Reconnecting, not an update prompt."
+      ]
+    },
+    "ko": {
+      "new": [
+        "웹에서 패널을 분할·확대·교체·크기 조절하고, 분할된 탭은 모든 패널을 한 번에 보여 줍니다.",
+        "패널의 터미널 기록을 검색하고, 일치 항목 강조와 기록 스크롤바를 제공합니다.",
+        "명령 팔레트가 herdr의 Goto 선택기처럼 동작하고 herdr 플러그인 동작을 실행합니다.",
+        "herdr 창처럼 탭 순서를 바꾸고 패널을 다른 탭이나 워크스페이스로 옮길 수 있습니다.",
+        "herdr에서 정한 에이전트 이름이 보이고, 설정에서 herdr 에이전트 연동 상태를 볼 수 있습니다."
+      ],
+      "improved": [
+        "응답을 압축해 느린 연결에서도 긴 채팅을 더 빨리 엽니다.",
+        "herdr 창에서 바꾼 내용이 웹에 바로 반영됩니다.",
+        "휴대폰에서 앱을 벗어나면 패널 크기를 herdr 창에 바로 돌려줍니다."
+      ],
+      "fixed": [
+        "다른 연결이 쓰고 있는 패널에는 입력이 들어가지 않습니다.",
+        "탭, 워크스페이스, PC를 바꿔도 보류된 메시지의 '지금 보내기'가 남아 있습니다.",
+        "Windows에서 폴더 이름의 대소문자가 달라도 Codex 채팅을 찾습니다.",
+        "모델 오류로 끝난 OmO 턴은 DONE이 아니라 READY로 표시됩니다.",
+        "브리지 업데이트 중 잠든 원격 PC는 업데이트 요청 대신 '다시 연결 중'으로 표시됩니다."
+      ]
+    },
+    "ja": {
+      "new": [
+        "Webからペインの分割・拡大・入れ替え・サイズ変更ができ、分割タブは全ペインを表示します。",
+        "ペインのターミナル履歴を検索でき、一致箇所の強調と履歴スクロールバーがあります。",
+        "コマンドパレットがherdrのGotoピッカーのように動き、herdrプラグインの操作を実行します。",
+        "herdrのウィンドウと同じく、タブを並べ替え、ペインを別のタブやワークスペースへ移せます。",
+        "herdrで付けたエージェント名が表示され、設定画面でherdrのエージェント連携を確認できます。"
+      ],
+      "improved": [
+        "応答を圧縮するため、遅い回線でも長いチャットを速く開けます。",
+        "herdrのウィンドウで行った変更がWebにすぐ反映されます。",
+        "スマートフォンでアプリを離れると、ペインのサイズをすぐherdrのウィンドウに戻します。"
+      ],
+      "fixed": [
+        "別の接続が使っているペインには入力が届きません。",
+        "タブ、ワークスペース、PCを切り替えても、保留メッセージの「今すぐ送信」が残ります。",
+        "Windowsでフォルダ名の大文字小文字が違っても、Codexのチャットを見つけます。",
+        "モデルエラーで終わったOmOのターンはDONEではなくREADYと表示されます。",
+        "ブリッジ更新中にスリープしたリモートPCは、更新の案内ではなく「再接続中」と表示されます。"
+      ]
+    },
+    "zh": {
+      "new": [
+        "可在网页中拆分、放大、交换和调整窗格大小，拆分的标签页会同时显示所有窗格。",
+        "可搜索窗格的终端历史，并高亮匹配项、提供历史滚动条。",
+        "命令面板像 herdr 的 Goto 选择器一样工作，并可运行 herdr 插件操作。",
+        "像 herdr 窗口一样重新排列标签页，并把窗格移到其他标签页或工作区。",
+        "会显示在 herdr 中设置的代理名称，并可在设置中查看 herdr 的代理集成状态。"
+      ],
+      "improved": [
+        "响应经过压缩，在慢速连接下也能更快打开较长的聊天。",
+        "在 herdr 窗口中所做的更改会立即显示在网页中。",
+        "手机离开应用后，会立即把窗格大小还给 herdr 窗口。"
+      ],
+      "fixed": [
+        "输入不会再进入另一个连接正在使用的窗格。",
+        "切换标签页、工作区或电脑后，暂存消息的“立即发送”仍然保留。",
+        "在 Windows 上，即使文件夹大小写不同也能找到 Codex 聊天。",
+        "因模型错误结束的 OmO 回合显示为 READY，而不是 DONE。",
+        "在网桥更新期间休眠的远程电脑会显示“正在重新连接”，而不是要求更新。"
+      ]
+    },
+    "tr": {
+      "new": [
+        "Panelleri web'den böl, yakınlaştır, boyutlandır; bölünmüş sekme hepsini gösterir",
+        "Panel terminal geçmişinde arama: eşleşmeler vurgulanır, geçmiş kaydırma çubuğuyla",
+        "Komut paleti herdr'ın Goto seçici gibi çalışır ve herdr eklenti eylemlerini koşturur",
+        "Sekmeleri yeniden sırala; paneli başka sekme veya çalışma alanına taşı, herdr'daki gibi",
+        "Ajanlar herdr ile belirlenen adları gösterir; Ayarlar ajan entegrasyonlarını listeler"
+      ],
+      "improved": [
+        "Yanıtlar sıkıştırılır; yavaş bağlantıda uzun sohbeti açmak daha hızlı",
+        "herdr'ın kendi penceresinde yapılan değişiklikler web'de anında görünür",
+        "Uygulamadan ayrılan telefon, panelin boyutunu hemen herdr'ın penceresine geri verir"
+      ],
+      "fixed": [
+        "Yazdıklarınız asla başka bir bağlantının kullandığı panele gitmez",
+        "Tutulan mesajlar sekme, çalışma alanı veya bilgisayar değiştirince de Şimdi gönder'i korur",
+        "Windows'ta klasörün harf büyüklüğü farklı olsa bile Codex sohbetleri bulunur",
+        "Model hatasıyla biten bir OmO turu BİTTİ değil HAZIR görünür",
+        "Köprü güncellemesi uyurken uzak bilgisayar güncelleme değil yeniden bağlanma der"
+      ]
+    }
+  },
+  "0.4.5": {
+    "en": {
+      "improved": [
+        "Desktop tabs keep updating unless you opt in to sharing panes with herdr's own window."
+      ],
+      "fixed": [
+        "Claude background counts recover from transcript changes and temporary lookup failures.",
+        "Delayed Claude history keeps the turn's background wait; day-old task badges expire.",
+        "Claude completion cards no longer repeat within a chat page after incremental updates.",
+        "Selecting chat code preserves its trailing newlines, with highlighting on or off."
+      ]
+    },
+    "ko": {
+      "improved": [
+        "herdr 창과 패널을 함께 쓰는 옵션을 켜지 않으면 다른 창으로 이동해도 터미널 갱신을 유지합니다."
+      ],
+      "fixed": [
+        "Claude 백그라운드 작업 수가 기록 변경이나 일시적인 조회 실패 후에도 갱신됩니다.",
+        "Claude 기록을 늦게 찾아도 턴의 백그라운드 대기를 유지하고 하루 지난 작업 배지는 만료됩니다.",
+        "채팅을 갱신할 때 같은 페이지에 Claude 완료 카드가 중복으로 나타나지 않습니다.",
+        "코드 강조 설정과 관계없이 채팅 코드를 선택할 때 마지막 줄바꿈을 보존합니다."
+      ]
+    },
+    "ja": {
+      "improved": [
+        "herdrのウィンドウとペインを共有する設定を有効にしない限り、別のウィンドウに移っても表示を更新します。"
+      ],
+      "fixed": [
+        "Claudeのバックグラウンド件数が、記録の変更や一時的な取得失敗の後も更新されます。",
+        "Claudeの履歴取得が遅れてもターンの待機状態を保ち、1日経ったタスクのバッジは消えます。",
+        "チャットの差分更新で、同じページにClaudeの完了カードが重複しなくなりました。",
+        "コードの色分け設定にかかわらず、チャットのコード選択で末尾の改行を保持します。"
+      ]
+    },
+    "zh": {
+      "improved": [
+        "除非开启与 herdr 窗口共用窗格的设置，否则切换窗口后桌面标签页仍会持续更新。"
+      ],
+      "fixed": [
+        "Claude 后台任务数在记录变化或临时查询失败后仍能恢复更新。",
+        "延迟找到 Claude 历史记录时仍保留回合的后台等待，超过一天的任务徽标会过期。",
+        "增量更新聊天时，同一页中不再出现重复的 Claude 完成卡片。",
+        "无论是否开启代码高亮，选择聊天代码时都会保留末尾换行。"
+      ]
+    },
+    "tr": {
+      "improved": [
+        "Masaüstü sekmeleri, panelleri herdr'ın penceresiyle paylaşmayı seçmedikçe güncellenir"
+      ],
+      "fixed": [
+        "Claude arka plan sayıları döküm değişimlerinden ve geçici arama hatalarından toparlanır",
+        "Geciken Claude geçmişi turun arka plan bekleyişini korur; günlük görev rozetleri düşer",
+        "Claude tamamlanma kartları artımlı güncellemelerden sonra sohbet sayfasında tekrarlanmaz",
+        "Sohbet kodunu seçmek satır sonlarındaki boş satırları korur; vurgulama açık ya da kapalı"
+      ]
+    }
+  },
+  "0.4.4": {
+    "en": {
+      "new": [
+        "Follow Claude Code subagents and background commands directly in chat.",
+        "Choose a dictation language and give each PC's installed app its own name.",
+        "Reorder workspaces by touch and read highlighted code and task lists in chat."
+      ],
+      "improved": [
+        "Find slash commands by name fragments, descriptions or matching letters."
+      ],
+      "fixed": [
+        "Claude turns waiting for background work no longer announce an early finish.",
+        "Inactive browser tabs release panes so herdr's terminal view keeps its size.",
+        "Fast typing around chat completions keeps every key and selection in place.",
+        "Open worktrees from linked checkouts and read short, identifiable Codex sessions."
+      ]
+    },
+    "ko": {
+      "new": [
+        "Claude Code의 하위 에이전트와 백그라운드 명령을 채팅에서 확인할 수 있습니다.",
+        "받아쓰기 언어를 선택하고 PC마다 설치된 앱에 다른 이름을 붙일 수 있습니다.",
+        "터치로 작업 공간 순서를 바꾸고 채팅에서 코드 강조와 작업 목록을 볼 수 있습니다."
+      ],
+      "improved": [
+        "이름 일부, 설명, 순서대로 맞는 글자로 슬래시 명령을 찾을 수 있습니다."
+      ],
+      "fixed": [
+        "백그라운드 작업을 기다리는 Claude 턴이 완료 알림을 너무 일찍 보내지 않습니다.",
+        "사용하지 않는 브라우저 탭이 패널 연결을 놓아 herdr 터미널 화면 크기를 유지합니다.",
+        "채팅 자동 완성 전후에 빠르게 입력해도 글자 순서와 선택 영역이 유지됩니다.",
+        "연결된 체크아웃에서 워크트리를 열고 식별 가능한 짧은 Codex 세션을 읽습니다."
+      ]
+    },
+    "ja": {
+      "new": [
+        "Claude Codeのサブエージェントとバックグラウンドコマンドをチャットで確認できます。",
+        "音声入力の言語を選び、PCごとにインストールしたアプリに別の名前を付けられます。",
+        "タッチでワークスペースを並べ替え、チャットでコードの色分けとタスクリストを確認できます。"
+      ],
+      "improved": [
+        "名前の一部、説明、順に一致する文字からスラッシュコマンドを探せます。"
+      ],
+      "fixed": [
+        "バックグラウンド処理を待つClaudeのターンが、早すぎる完了通知を出さなくなりました。",
+        "使っていないブラウザータブがペインを解放し、herdrのターミナル表示サイズを保ちます。",
+        "チャットの補完前後に素早く入力しても、文字の順序と選択範囲が維持されます。",
+        "リンクされたチェックアウトからワークツリーを開き、識別できる短いCodexセッションを読めます。"
+      ]
+    },
+    "zh": {
+      "new": [
+        "可在聊天中查看 Claude Code 子代理和后台命令。",
+        "可选择听写语言，并为每台电脑上安装的应用设置不同的名称。",
+        "可通过触摸调整工作区顺序，并在聊天中查看代码高亮和任务列表。"
+      ],
+      "improved": [
+        "可通过名称片段、描述或按顺序匹配的字母查找斜杠命令。"
+      ],
+      "fixed": [
+        "等待后台任务的 Claude 回合不再过早发出完成通知。",
+        "未使用的浏览器标签页会释放窗格，保持 herdr 终端的显示尺寸。",
+        "在聊天补全前后快速输入时，字符顺序和选区不再被打乱。",
+        "可从关联的检出目录打开工作树，并读取能够明确识别的短 Codex 会话。"
+      ]
+    },
+    "tr": {
+      "new": [
+        "Claude Code alt ajanlarını ve arka plan komutlarını doğrudan sohbetten izleyin",
+        "Dikte dili seçin ve her bilgisayarın kurulu uygulamasına kendi adını verin",
+        "Çalışma alanlarını dokunarak sıralayın; sohbette vurgulu kod ve görev listeleri okuyun"
+      ],
+      "improved": [
+        "Eğik çizgi komutlarını ad parçaları, açıklamalar veya eşleşen harflerle bulun"
+      ],
+      "fixed": [
+        "Arka plan işini bekleyen Claude turları artık erken bitti demez",
+        "Etkin olmayan tarayıcı sekmeleri panelleri bırakır; herdr'ın terminali boyutunu korur",
+        "Tamamlanma kartları çevresinde hızlı yazım her tuşu ve seçimi yerinde tutar",
+        "Bağlı çıkışlardan worktree açın; kısa, ayırt edilebilir Codex oturumları okuyun"
+      ]
+    }
+  },
   "0.4.3": {
     "en": {
       "improved": [
@@ -62,6 +435,22 @@
         "同一提醒在所有打开的标签页中只响一次,该标签页关闭后仍能听到",
         "在后台打开的标签页不再改变你在别处使用的窗格大小",
         "herdr 从图形界面应用启动时插件也能找到 Bun;请通过 herdr 重新安装插件"
+      ]
+    },
+    "tr": {
+      "improved": [
+        "Profil ile başlayan ya da uzun süredir çalışan omp panelleri sohbetini gösterir",
+        "Uzak bilgisayar, köprüsü güncellendikten sonra panelin yeni ajanını hemen listeler"
+      ],
+      "fixed": [
+        "ABD dışı saat biçimli (ör. Korece) Mac'lerde Claude panelleri sohbetini gösterir",
+        "Kuyruktaki mesaj artık Claude Code kutusuna yazdığınızın üzerine yapıştırılmaz",
+        "Yön tuşları less, git log ve man'de çalışır; tıklar fareyi okuyan programlara ulaşır",
+        "Claude Code 2.1.29x onay ve soruları yine kart olarak görünür",
+        "Sohbetteki kopyala düğmeleri düz HTTP kullanan LAN adreslerinde çalışır",
+        "Uyarı açık sekmelerde bir kez çalar; o sekme kapansa da duyulur",
+        "Arka planda açık kalan sekme, başka yerde kullandığınız paneli artık boyutlandırmaz",
+        "herdr bir GUI uygulamadan başlarken eklenti Bun'ı bulur; eklentiyi herdr'dan kurun"
       ]
     }
   },
@@ -152,6 +541,28 @@
         "在 Claude Code 聊天中发送未知的斜杠命令不再消失,而是显示 Claude 的回答",
         "命令面板的快捷键提示跟随你改过的绑定,非拉丁键盘布局下快捷键也可用",
         "即使浏览器中已打开的记录损坏,“清除已打开的完成标记”也能正常工作"
+      ]
+    },
+    "tr": {
+      "new": [
+        "Kurulum ve güncellemeler anonim sayılır; Ayarlar → Hakkında gösterir ve kapatır",
+        "Ajan bildirimine tıklamak paneli, yanıtı bulunduğu sohbetinde açar",
+        "Devin CLI panelleri konuşmasını sohbette gösterir",
+        "OpenCode 2 panelleri sohbette konuşma olarak okunur; OpenCode 1.x terminal metnini korur",
+        "Görünmez karakterler için tutulan mesaj, gönderme ya da atma kartı gösterir"
+      ],
+      "improved": [
+        "Telefon tuş çubuğu Esc, Tab ve Ctrl+C ile başlar; kayıtlı düzenler sırasını korur",
+        "Ayarlar → Kısayollar tuşları açıklar; tarayıcı veya OS'in tuttuklarını işaretler",
+        "Paneldeki vim, tmux ve Claude Code yine panonuza kopyalar; Ayarlar'a gitmek gerekmez",
+        "Site herdrweb.dev'e taşındı ve Basitleştirilmiş Çince okunur; eski bağlantılar çalışır",
+        "GitHub sürümleri bu gibi kısa yama notlarıyla açılır"
+      ],
+      "fixed": [
+        "Safari'de Korece yazmak heceleri artık kaybetmez, İngilizceden geçtikten sonra da",
+        "Claude Code sohbetinde bilinmeyen eğik çizgi komutu kaybolmak yerine yanıtı gösterir",
+        "Palet kısayol ipuçları atamalarınızı izler; kısayollar Latin olmayan klavyede çalışır",
+        "Açılan bitişleri sessizleştirme, tarayıcı bozuk kayıt tutsa bile çalışır"
       ]
     }
   },
@@ -262,6 +673,33 @@
         "herdr 不在时，插件的 start 仍让应用留在原端口",
         "秘密输入或已输入的文本不会再进入你已离开的窗格",
         "Gajae Code 的选择菜单和启动菜单会显示选项，而不只是方向键"
+      ]
+    },
+    "tr": {
+      "new": [
+        "Claude Code sohbetinde /effort yazmak bu oturumun çabasını seçen kartı açar",
+        "Ayarlar → Görünüm, bekleyen ve son ajanları Ajanlar listesinin üstünde tutabilir",
+        "Web'de açtığınız bitmiş ajan noktasını kaybedebilir, herdr'daki gibi (isteğe bağlı)",
+        "Kılavuz, uygulamaya Portal ile genel bir HTTPS adresi vermeyi gösterir"
+      ],
+      "improved": [
+        "Hatalı erişim anahtarı beş denemeden sonra daha çok bekler, bir dakikaya dek",
+        "Paneldeki bir program yalnız izin verince panonuza kopyalar: Ayarlar → Terminal",
+        "Pencereler Tab'ı içinde tutar; ekran okuyucular sekme, panel ve durum satırını söyler",
+        "Bilgisayar ekle, yeniden bağla ve köprü güncelle telefonda alt sayfa olarak açılır",
+        "Güncel bir uzak bilgisayarın güncellemesi köprüyü indirmeden yeniden kullanır",
+        "Uyarılar yalnız https push servislerine gider ve yönlendirmeyi asla izlemez",
+        "Uzun taslaklar sarılır; sayfa yakınlaştırılınca kaydırma çubuğu metni örtmez"
+      ],
+      "fixed": [
+        "Kapanmamış parantezli uzun satır veya bozuk kaçış kodu sohbeti artık dondurmaz",
+        "Windows'ta daha çok Claude Code ve Codex paneli hata yerine sohbetini gösterir",
+        "Kendi cihazlarınız yine Tailscale oturumuyla tanınır, eşleştirme olmadan",
+        "Claude Code sohbeti eğik çizgi komutunun yanıtını gösterir; /goal önerilir",
+        "Ayarlar, palet, Bilgisayar ekle ve önizlemeler sırayla yığınır; Escape üsttekini kapatır",
+        "Eklentinin başlangıcı herdr yokken uygulamayı portunda tutar",
+        "Gizli bilgi veya yazdığınız metin artık ayrıldığınız panele gitmez",
+        "Gajae Code seçim ve başlangıç menüleri seçeneklerini gösterir, yalnız ok tuşlarını değil"
       ]
     }
   },
@@ -380,6 +818,35 @@
         "Claude 用量表显示 Fable 等各模型的每周限额",
         "通过 tailscale serve 访问的本人手机无需配对码即可进入（可选）",
         "保留输入提示只显示待发送文本，并在输入过长无法保留时告知"
+      ]
+    },
+    "tr": {
+      "new": [
+        "Ayarlar bir seferde bir sayfa gösterir; masaüstünde yanında sayfa listesi",
+        "Güncelleme kurulmadan önce ne getirdiğini, çalışınca ne getirdiğini söyler",
+        "Sürüm notları yama notu gibi okunur: yeni özellikler, iyileştirmeler, düzeltmeler",
+        "Mobil tuş çubuğu düzenlenebilir: tuş ekle, kaldır, sırala; Ctrl/Alt bileşimleri kaydet",
+        "Mobil tuş çubuğunda yapışkan Ctrl, Alt ve Shift, ayrıca bir Enter tuşu",
+        "Kenar çubuğu boyutlandırılabilir; sağ tık satırın menüsünü açar",
+        "Kurulumlar gh oturum açıksa sizin için yıldız verebilir; yalnız onayınızla"
+      ],
+      "improved": [
+        "Her sohbette tek Gönder/Durdur düğmesi; çalışırken gönderilen mesaj sıradaki turda gider",
+        "Kenar çubuğu satırları her ajanın ne yaptığını gösterir; altında çalışma alanı ve klasör",
+        "Kenar çubuğu herdr'ın çalışma alanlarını ve ajanlarını tek ızgarada izler",
+        "Bekleyen ajan kırmızı soru işareti, bitmiş ajan yeşil nokta ile işaretlenir",
+        "Mikrofon düğmesi diktenin çalıştığı masaüstü sohbetinde görünür; Otomatik/Açık/Kapalı",
+        "Sohbetin mesaj kutusu sohbet yazı tipi boyutunu izler",
+        "Telefonun Ajanlar listesi katlı başlar; öneri çipi varsayılan olarak açıktır"
+      ],
+      "fixed": [
+        "Bir mesaj artık biçimiyle sohbeti donduramaz veya çökertemez",
+        "Uygulama içi uyarılar ve sesleri artık ara sıra kaybolmaz",
+        "Ajanı yeni başlayan panel hemen ajan paneli olarak listelenir",
+        "Numaralı mesajdan sonra sorulan soru yine soru kartı olarak görünür",
+        "Claude kullanım göstergesi model başına haftalık limitleri gösterir, Fable gibi",
+        "Kendi telefonunuz tailscale serve ile kodsuz girer (isteğe bağlı)",
+        "Tutulan girdi bildirimi yalnız gönderilecek metni gösterir; sığmayanı da bildirir"
       ]
     }
   }

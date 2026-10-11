@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { Download, ExternalLink, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Code, Download, ExternalLink, X } from "lucide-react";
 import "./FileViewer.css";
 import { DirectoryBrowser } from "./DirectoryBrowser.tsx";
+import { Markdown, MarkdownImageContext } from "./Markdown.tsx";
 
 import type { FileInfo } from "../../shared/protocol.ts";
 import { ApiError } from "../lib/api.ts";
@@ -9,10 +10,12 @@ import { formatBytes } from "../lib/bridgeProgress.ts";
 import { LOCAL_MACHINE } from "../../shared/machines.ts";
 import { useMachineApi, useMachineId } from "../lib/machineContext.tsx";
 import { useT } from "../lib/i18n.ts";
+import { MAX_INLINE_IMAGE_BYTES, markdownImagePreview } from "../lib/markdownImages.ts";
 import { nativeModalOver, useFocusTrap } from "../lib/useFocusTrap.ts";
+import { useSheetSwipe } from "../lib/sheets.ts";
+import { readFilePreviewText } from "../lib/filePreviewText.ts";
+import { linkSearch } from "../lib/deepLink.ts";
 
-/** Bigger images are offered as a download: a phone decodes an image whole. */
-const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
 /** Text shows its first part: the rest is a download away. */
 const TEXT_PREVIEW_BYTES = 256 * 1024;
 
@@ -29,14 +32,15 @@ export interface FileViewerProps {
 
 /**
  * A file an agent wrote, opened in the browser: images, video and audio (streamed, so they
- * play and seek at once), PDFs, HTML pages, and the start of a text file. Anything can be downloaded.
+ * play and seek at once), PDFs, HTML pages, and the start of a text file (markdown drawn, its images read through the file endpoint). Anything can be downloaded.
  */
 export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActive = true }: FileViewerProps) {
   const t = useT();
   const { fetchFileInfo, fileUrl, fetchDirectories } = useMachineApi();
   // a remote PC's bridge reads a relative folder from the pane's folder only from its next bundle
   // on; until then it would list the bridge's own folder, so only an absolute or ~/ one is listed there
-  const remote = useMachineId() !== LOCAL_MACHINE;
+  const machineId = useMachineId();
+  const remote = machineId !== LOCAL_MACHINE;
   const [directory, setDirectory] = useState<string | null>(null);
   // the path as given, until a choice among files of that name replaces it
   const [path, setPath] = useState(asked);
@@ -46,12 +50,18 @@ export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActiv
   const [text, setText] = useState<string | null>(null);
   // an HTML page shows as the page, or as its source when asked
   const [source, setSource] = useState(false);
+  const [textTruncated, setTextTruncated] = useState(false);
+  const [textTotal, setTextTotal] = useState<number | undefined>(undefined);
   // Escape closes it, Tab stays in it, and the focus goes back to the row that opened it
   const surface = useFocusTrap<HTMLElement>(true);
+  useSheetSwipe(surface, onClose);
   useEffect(() => setPath(asked), [asked]);
 
   useEffect(() => {
     let cancelled = false;
+    const abort = new AbortController();
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    setTextTruncated(false); setTextTotal(undefined);
     setInfo(null); setCandidates(null); setError(null); setText(null); setDirectory(null); setSource(false);
     fetchFileInfo(path, paneId).then(async (next) => {
       if (cancelled) return;
@@ -59,9 +69,12 @@ export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActiv
       setInfo(next);
       if (next.kind !== "text") return;
       // only the first part of a text file travels: a range, whatever the file's size
-      const response = await fetch(fileUrl(next.path, paneId), { headers: { range: `bytes=0-${TEXT_PREVIEW_BYTES - 1}` } });
-      const body = await response.text();
-      if (!cancelled) setText(body);
+      deadline = setTimeout(() => abort.abort(), 5_000);
+      try {
+        const response = await fetch(fileUrl(next.path, paneId), { signal: abort.signal, headers: { range: `bytes=0-${TEXT_PREVIEW_BYTES - 1}` } });
+        const body = await readFilePreviewText(response, TEXT_PREVIEW_BYTES, { signal: abort.signal });
+        if (!cancelled) { setText(body.text); setTextTruncated(body.truncated); setTextTotal(body.total); }
+      } finally { clearTimeout(deadline); }
     }).catch(async (reason: unknown) => {
       if (cancelled) return;
       // a folder is listed from the pane's folder, as a file is found from it
@@ -75,7 +88,7 @@ export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActiv
       if (cancelled) return;
       setError(reason instanceof ApiError && reason.status === 404 ? t("No readable file at this path.") : t("The file could not be opened."));
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(deadline); abort.abort(); };
   }, [path, paneId, fetchFileInfo, fileUrl, fetchDirectories, remote]);
 
   useEffect(() => {
@@ -97,6 +110,16 @@ export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActiv
     <button type="button" aria-pressed={!source} onClick={() => setSource(false)}>{t("Page")}</button>
     <button type="button" aria-pressed={source} onClick={() => setSource(true)}>{t("Source")}</button>
   </div>;
+  const filePath = info?.path ?? path;
+  const markdown = info?.kind === "text" && /\.(?:md|markdown)$/i.test(info.name);
+  const previewUrl = `${window.location.pathname}${linkSearch({
+    machine: machineId, workspace: null, pane: null, view: null,
+    file: filePath, settings: null,
+  })}`;
+  // images of a markdown file load through the file endpoint, as the file itself does
+  const imagePreview = useCallback((src: string) => markdownImagePreview(
+    src, filePath, (target) => fetchFileInfo(target, paneId), (target, download) => fileUrl(target, paneId, download),
+  ), [filePath, paneId, fetchFileInfo, fileUrl]);
   const body = (() => {
     if (directory !== null) return <DirectoryBrowser key={directory} start={directory} onOpenFile={onOpen ?? setPath} />;
     if (error !== null) return <p className="file-viewer-note" role="alert">{error}</p>;
@@ -108,7 +131,7 @@ export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActiv
     switch (info.kind) {
       case "image":
         return info.size > MAX_INLINE_IMAGE_BYTES
-          ? <p className="file-viewer-note">This image is {formatBytes(info.size)}; download it to view.</p>
+          ? <p className="file-viewer-note">{t("This image is {size}; download it to view.", { size: formatBytes(info.size) })}</p>
           : <img className="file-viewer-media" src={url} alt={info.name} />;
       case "video":
         return <video className="file-viewer-media" src={url} controls playsInline preload="metadata" />;
@@ -123,8 +146,11 @@ export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActiv
         </>;
         return text === null ? <p className="file-viewer-note">{t("Opening…")}</p> : <>
           {page && modes}
-          <pre className="file-viewer-text">{text}</pre>
-          {info.size > TEXT_PREVIEW_BYTES && <p className="file-viewer-note">{t("Showing the first {shown} of {total}.", { shown: formatBytes(TEXT_PREVIEW_BYTES), total: formatBytes(info.size) })}</p>}
+          {markdown
+            ? <MarkdownImageContext.Provider value={imagePreview}><Markdown className="file-viewer-markdown" html>{text}</Markdown></MarkdownImageContext.Provider>
+            : <pre className="file-viewer-text">{text}</pre>}
+          {textTruncated && (textTotal ?? 0) <= TEXT_PREVIEW_BYTES ? <p className="file-viewer-note">{t("Only part of this file is shown. Download it to read the rest.")}</p>
+            : (textTotal ?? info.size) > TEXT_PREVIEW_BYTES && <p className="file-viewer-note">{t("Showing the first {shown} of {total}.", { shown: formatBytes(TEXT_PREVIEW_BYTES), total: formatBytes(textTotal ?? info.size) })}</p>}
         </>;
       default:
         return <p className="file-viewer-note">{info.mime}, {formatBytes(info.size)}. This file can't be shown here; download it instead.</p>;
@@ -142,7 +168,8 @@ export function FileViewer({ path: asked, paneId, onClose, onOpen, keyboardActiv
               <span className="file-viewer-path"><span dir="ltr">{info?.path ?? path}</span></span>
             </p>
           </div>
-          <a className="icon-button" href={page && !source ? pageUrl : url} target="_blank" rel="noopener" aria-label={t("Open in a new tab")} title={t("Open in a new tab")}><ExternalLink aria-hidden="true" /></a>
+          <a className="icon-button" href={page && !source ? pageUrl : markdown ? previewUrl : url} target="_blank" rel="noopener" aria-label={t("Open in a new tab")} title={t("Open in a new tab")}><ExternalLink aria-hidden="true" /></a>
+          {markdown && <a className="icon-button" href={url} target="_blank" rel="noopener" aria-label={t("Open raw file")} title={t("Open raw file")}><Code aria-hidden="true" /></a>}
           <a className="icon-button" href={fileUrl(info?.path ?? path, paneId, true)} download={info?.name ?? true} aria-label={t("Download")} title={t("Download")}><Download aria-hidden="true" /></a>
           <button type="button" className="icon-button" aria-label={t("Close file")} onClick={onClose}><X aria-hidden="true" /></button>
         </header>

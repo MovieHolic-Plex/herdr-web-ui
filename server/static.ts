@@ -109,16 +109,21 @@ const CSP_DIRECTIVES = [
 ];
 
 /**
+ * The policy both headers carry. A browser script that serves a build of its own sends it as it is:
+ * serveStatic reads only this checkout's dist/, and sends no policy before that is built.
+ */
+export const CONTENT_SECURITY_POLICY = CSP_DIRECTIVES.join("; ");
+
+/**
  * HERDR_WEB_CSP=report-only measures the policy above without enforcing it: the browser
  *   logs what the policy would have blocked and the app keeps working. `report-only` is the
  *   measurement mode; anything else enforces.
  */
 function cspHeader(): Record<string, string> {
   const mode = process.env["HERDR_WEB_CSP"];
-  const policy = CSP_DIRECTIVES.join("; ");
   return mode === "report-only"
-    ? { "content-security-policy-report-only": policy }
-    : { "content-security-policy": policy };
+    ? { "content-security-policy-report-only": CONTENT_SECURITY_POLICY }
+    : { "content-security-policy": CONTENT_SECURITY_POLICY };
 }
 
 /**

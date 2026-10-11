@@ -9,12 +9,15 @@ import { chromium } from "playwright-core";
 import { createServer } from "../server/index.ts";
 import { herdrRpc, workspaceClose, workspaceCreate } from "../server/herdr/client.ts";
 import { openSettingsPage } from "./settings-page.ts";
+import { sheetsSettled } from "./sheets-settled.ts";
+import type { Machine } from "../shared/protocol.ts";
 
 const root = mkdtempSync(join(tmpdir(), "herdr-web-ui-file-back-"));
 const codexHome = join(root, "codex-home");
 const thread = "01a0c7a1-56d9-7e20-9f08-f7a2d973bc11";
 mkdirSync(join(codexHome, "sessions"), { recursive: true });
 const transcript = join(codexHome, "sessions", `rollout-2026-09-28T00-00-00-${thread}.jsonl`);
+const fidelitySources = ["const last = 7;\n\n", "first\n", "first\n\nlast", "\n"];
 writeFileSync(transcript, [
   { type: "session_meta", payload: { id: thread, cwd: root } },
   { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Show me the demo video." }] } },
@@ -28,6 +31,7 @@ writeFileSync(transcript, [
   { type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "shoot", arguments: JSON.stringify({ cmd: "python3 shoot.py --out shots/report.html" }) } },
   { type: "response_item", payload: { type: "function_call_output", call_id: "shoot", output: `${join(root, "shots", "t00000.png")} (1600, 1000) -> (1255, 960)\nsaved shots/report.html\ndisplay image 1: [image/png]` } },
   { type: "response_item", payload: { type: "message", role: "assistant", phase: "final_answer", content: [{ type: "output_text", text: `Shots:\n\n\`\`\`\n${join(root, "shots", "t00000.png")} (1600, 1000) -> (1255, 960)\n\`\`\`` }] } },
+  ...fidelitySources.map((source, index) => ({ type: "response_item", payload: { type: "message", role: "assistant", phase: "final_answer", content: [{ type: "output_text", text: `\`\`\`${index === 0 ? "ts" : "text"}\n${source}\n\`\`\`` }] } })),
 ].map((row) => JSON.stringify(row)).join("\n"));
 const db = new Database(join(codexHome, "state_5.sqlite"));
 db.exec("CREATE TABLE threads (id TEXT, rollout_path TEXT, cwd TEXT, archived INTEGER, agent_role TEXT, created_at INTEGER, updated_at INTEGER, source TEXT, first_user_message TEXT)");
@@ -47,6 +51,10 @@ document.getElementById("ran").textContent = "script ran";
 try { localStorage.length; document.getElementById("store").textContent = "storage reachable"; } catch { document.getElementById("store").textContent = "no storage"; }
 fetch("/api/health").then(() => { document.getElementById("net").textContent = "network reachable"; }, () => { document.getElementById("net").textContent = "network blocked"; });
 </script></body>`);
+const markdownPath = join(root, "preview #1 & 한글.MD");
+const markdownSource = "<p align=\"center\">\n  <img src=\"./preview.svg\" alt=\"Logo\" width=\"64\">\n</p>\n\n<p align=\"center\"><a href=\"https://example.com/\">website</a> &middot; <strong>bold</strong></p>\n\n# Markdown preview\n\n한글 문서도 새 탭에서 읽을 수 있습니다.\n\n| Item | State |\n| --- | --- |\n| Preview | Ready |\n\n- [x] Rendered\n\n```ts\nconst answer = 42;\n```\n\n![Local image](./preview.svg)\n";
+writeFileSync(markdownPath, markdownSource);
+writeFileSync(join(root, "preview.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80"><rect width="240" height="80" fill="teal"/></svg>');
 let workspace: string | undefined;
 let server: ReturnType<typeof createServer> | undefined;
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
@@ -88,13 +96,41 @@ try {
   await page.locator(".conn-live").waitFor();
   const videoLink = page.getByRole("button", { name: "demo video", exact: true });
   await videoLink.waitFor();
-  await page.locator(".markdown-code .hl-keyword", { hasText: "const" }).waitFor();
+  await page.locator(".markdown-code").first().locator(".hl-keyword", { hasText: "const" }).waitFor();
   await page.locator(".markdown-code .hl-number", { hasText: "42" }).waitFor();
   console.log("PASS Chat fenced code block is syntax highlighted");
   // a blank line must survive in the text a copy picks up
   const codeText = await page.locator(".markdown-code .hl-code").first().innerText();
   if (codeText !== "const answer = 42;\n\nexport { answer };") throw new Error(`Chat code block text lost its blank line: ${JSON.stringify(codeText)}`);
   console.log("PASS Chat code block keeps its blank line in the text");
+  const checkCodeFidelity = async (mode: string) => {
+    for (const [index, source] of fidelitySources.entries()) {
+      const block = page.locator(".markdown-code").nth(3 + index);
+      assert.equal(await block.locator("code").textContent(), source, `${mode}: source whitespace`);
+      const selections = await block.locator("pre").evaluate((pre, source) => {
+        const selection = window.getSelection()!;
+        const select = (node: Node) => {
+          const range = document.createRange(); range.selectNodeContents(node);
+          selection.removeAllRanges(); selection.addRange(range);
+          return selection.toString();
+        };
+        const actual = select(pre);
+        const baseline = document.createElement("pre");
+        const code = document.createElement("code"); code.textContent = source;
+        baseline.append(code); document.body.append(baseline);
+        const expected = select(baseline);
+        baseline.remove(); selection.removeAllRanges();
+        return { actual, expected };
+      }, source);
+      assert.equal(selections.actual, selections.expected, `${mode}: selection matches native pre/code`);
+    }
+    if (process.env.UI_EVIDENCE_DIR) {
+      mkdirSync(process.env.UI_EVIDENCE_DIR, { recursive: true });
+      await page.locator(".markdown-code").nth(3).screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `code-fidelity-${mode}.png`) });
+    }
+    console.log(`PASS ${mode}: trailing and interior blank lines match source and native selection`);
+  };
+  await checkCodeFidelity("highlight-on");
   const composer = page.getByRole("textbox", { name: "Message", exact: true });
   await composer.fill("Keep my mobile draft");
   const chatUrl = page.url();
@@ -154,6 +190,8 @@ try {
     const settings = page.getByRole("dialog", { name: "Settings", exact: true });
     await settings.waitFor();
     await page.waitForFunction(() => history.state?.["herdr-web-ui:settings"] !== undefined);
+    // a phone's Settings rises over the preview (styles.css): look where it comes to rest
+    await sheetsSettled(page);
     const settingsClose = settings.getByRole("button", { name: "Close settings", exact: true });
     assert.equal(await settingsClose.evaluate((button) => {
       const rect = button.getBoundingClientRect();
@@ -329,6 +367,118 @@ try {
   await page.getByRole("button", { name: "Close file", exact: true }).click();
   await page.locator(".file-viewer").waitFor({ state: "hidden" });
 
+  // The real app and file server, not a component-only fixture: a fresh tab must render
+  // the same document, while raw/download keep their byte-for-byte API contract.
+  for (const width of [390, 1440]) {
+    for (const theme of ["dark", "light"]) {
+      const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: width === 390, hasTouch: width === 390 });
+      await context.addInitScript((theme) => localStorage.setItem("herdr-web-ui:settings", JSON.stringify({ language: "en", theme })), theme);
+      const page = await context.newPage();
+      page.setDefaultTimeout(10_000);
+      await page.goto(`${origin}/?pane=${encodeURIComponent(pane)}&file=${encodeURIComponent(markdownPath)}`);
+      const markdown = page.locator(".file-viewer-markdown");
+      await markdown.getByRole("heading", { name: "Markdown preview", exact: true }).waitFor();
+      await markdown.getByRole("cell", { name: "Ready", exact: true }).waitFor();
+      // a README's HTML header is drawn, centered, never shown as tags
+      assert.equal((await markdown.innerText()).includes("<p"), false, "HTML tags are not shown as text");
+      assert.equal(await markdown.locator('.markdown-center img[alt="Logo"]').getAttribute("width"), "64");
+      assert.equal(await markdown.locator(".markdown-center").first().evaluate((node) => getComputedStyle(node).textAlign), "center");
+      await markdown.getByRole("link", { name: "website", exact: true }).waitFor();
+      await page.waitForFunction(() => {
+        const image = document.querySelector<HTMLImageElement>(".file-viewer-markdown img");
+        return image?.complete && image.naturalWidth === 240;
+      });
+      await sheetsSettled(page);
+      if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `markdown-inline-${width}-${theme}.png`) });
+      const popupReady = context.waitForEvent("page");
+      await page.getByRole("link", { name: "Open in a new tab", exact: true }).click();
+      const popup = await popupReady;
+      popup.setDefaultTimeout(10_000);
+      await popup.setViewportSize({ width, height: 900 });
+      const rendered = popup.locator(".file-viewer-markdown");
+      await rendered.getByRole("heading", { name: "Markdown preview", exact: true }).waitFor();
+      await rendered.getByRole("cell", { name: "Ready", exact: true }).waitFor();
+      await popup.waitForFunction(() => {
+        const image = document.querySelector<HTMLImageElement>(".file-viewer-markdown img");
+        return image?.complete && image.naturalWidth === 240;
+      });
+      const raw = await popup.getByRole("link", { name: "Open raw file", exact: true }).getAttribute("href");
+      assert.ok(raw);
+      assert.equal(await (await context.request.get(`${origin}${raw}`)).text(), markdownSource);
+      const download = await popup.getByRole("link", { name: "Download", exact: true }).getAttribute("href");
+      assert.ok(download);
+      const saved = await context.request.get(`${origin}${download}`);
+      assert.match(saved.headers()["content-disposition"] ?? "", /attachment/);
+      assert.equal(await saved.text(), markdownSource);
+      await popup.reload();
+      await rendered.getByRole("heading", { name: "Markdown preview", exact: true }).waitFor();
+      await popup.waitForFunction(() => {
+        const image = document.querySelector<HTMLImageElement>(".file-viewer-markdown img");
+        return image?.complete && image.naturalWidth === 240;
+      });
+      await sheetsSettled(popup);
+      assert.equal(await popup.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      if (process.env.UI_EVIDENCE_DIR) await popup.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, `markdown-tab-${width}-${theme}.png`) });
+      await popup.getByRole("button", { name: "Close file", exact: true }).click();
+      await popup.locator(".file-viewer").waitFor({ state: "hidden" });
+      await popup.close();
+      await context.close();
+      console.log(`PASS Markdown inline/new tab/reload/raw/download: ${width}px ${theme}`);
+    }
+  }
+  // A file-only link owns its PC even if this browser last selected another one.
+  // The remote fixture has no panes; only the bridge hop is supplied here, and its
+  // file requests still go through the real server's stat/Range implementation.
+  const roster: { machines: Machine[] } = await (await context.request.get(`${origin}/api/machines`)).json();
+  const local = roster.machines.find((machine) => machine.id === "local");
+  assert.ok(local?.snapshot);
+  const remote: Machine = { ...local, id: "remote-fixture", name: "Remote fixture", snapshot: { ...local.snapshot, panes: [], workspaces: [], tabs: [], layouts: [], agents: [] } };
+  for (const target of ["remote-fixture", "local", "missing-fixture"]) {
+    const ownerContext = await browser.newContext();
+    const fileRequests: string[] = [];
+    await ownerContext.addInitScript(({ stored, pane }) => {
+      localStorage.setItem("herdr-web-ui:settings", JSON.stringify({ language: "en" }));
+      sessionStorage.setItem("herdr-web-ui:selection", JSON.stringify({ machine_id: stored, pane_id: pane }));
+    }, { stored: target === "local" ? "remote-fixture" : "local", pane });
+    await ownerContext.route("**/api/**", async (route) => {
+      const request = new URL(route.request().url());
+      if (request.pathname === "/api/machines/events") { await route.abort(); return; }
+      if (request.pathname === "/api/machines") { await route.fulfill({ json: { machines: [...roster.machines, remote] } }); return; }
+      if (request.pathname === "/api/machines/remote-fixture/session") { await route.fulfill({ json: { snapshot: remote.snapshot } }); return; }
+      if (request.pathname.includes("/fs/")) {
+        fileRequests.push(request.pathname);
+        if (request.pathname.startsWith("/api/machines/remote-fixture/")) {
+          request.pathname = request.pathname.replace("/api/machines/remote-fixture/", "/api/");
+          await route.fulfill({ response: await route.fetch({ url: request.href }) });
+          return;
+        }
+      }
+      await route.continue();
+    });
+    const ownerPage = await ownerContext.newPage();
+    ownerPage.setDefaultTimeout(10_000);
+    await ownerPage.goto(`${origin}/?machine=${target}&file=${encodeURIComponent(markdownPath)}`);
+    if (target === "missing-fixture") {
+      await ownerPage.getByText("That link's PC is not set up here", { exact: true }).waitFor();
+      assert.equal(await ownerPage.locator(".file-viewer").count(), 0);
+      assert.deepEqual(fileRequests, [], "an unknown PC never reads the local file");
+    } else {
+      await ownerPage.locator(".file-viewer-markdown").getByRole("heading", { name: "Markdown preview", exact: true }).waitFor();
+      const prefix = target === "local" ? "/api/fs/" : "/api/machines/remote-fixture/fs/";
+      assert.ok(fileRequests.length >= 2 && fileRequests.every((path) => path.startsWith(prefix)), fileRequests.join(", "));
+      await ownerPage.waitForFunction((path) => new URLSearchParams(location.search).get("file") === path, markdownPath);
+      const link = await ownerPage.getByRole("link", { name: "Open in a new tab", exact: true }).getAttribute("href");
+      assert.ok(link);
+      assert.equal(new URL(link, origin).searchParams.get("machine") ?? "local", target);
+      await ownerPage.reload();
+      await ownerPage.locator(".file-viewer-markdown").getByRole("heading", { name: "Markdown preview", exact: true }).waitFor();
+    }
+    await ownerContext.close();
+    console.log(`PASS file-only link PC ownership, stored selection and pane independence: ${target}`);
+  }
+  await page.goto(`${origin}/?pane=${encodeURIComponent(pane)}&view=chat`);
+  await page.locator(".markdown-code").first().waitFor();
+
   // a chat code block the highlighter gives up on stays plain and says so, and the page runs on
   await page.locator(".markdown-code .hl-note", { hasText: "Too long to highlight" }).waitFor();
   assert.equal(await page.locator(".markdown-code").nth(1).locator("code span:not(.hl-line)").count(), 0, "the slow block is plain");
@@ -396,6 +546,7 @@ try {
   await page.locator(".markdown-code .hl-code").first().waitFor();
   assert.equal(await page.locator(".markdown-code .hl-keyword, .markdown-code .hl-number").count(), 0, "chat code is plain");
   assert.equal(await page.locator(".markdown-code .hl-note").count(), 0, "plain by choice is not too long");
+  await checkCodeFidelity("highlight-off");
   console.log("PASS Settings → Highlight code off shows chat code plain");
   assert.deepEqual(errors, []);
 } finally {

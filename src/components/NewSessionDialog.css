@@ -36,6 +36,42 @@
   flex: none;
 }
 
+/* one row of three: a short name is shown whole, and only a long one gives way to an ellipsis */
+.new-session-folder-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.new-session-folder-chip {
+  min-width: 0;
+  max-width: 16rem;
+  border-radius: var(--radius-pill);
+}
+
+/* a phone keeps them on one row and swipes it sideways */
+@media (max-width: 640px), (pointer: coarse) {
+  .new-session-folder-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .new-session-folder-chips::-webkit-scrollbar { display: none; }
+  .new-session-folder-chip { flex: none; max-width: 12rem; scroll-snap-align: start; }
+}
+
+.new-session-folder-chip svg {
+  flex: none;
+}
+
+.new-session-folder-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* New tab: the folder is the workspace's, shown as a fact in a dashed box, not asked for */
 .new-session-folder {
   display: flex;

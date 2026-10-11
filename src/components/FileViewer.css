@@ -116,6 +116,12 @@
   margin-bottom: var(--space-2);
 }
 
+.file-viewer-markdown {
+  align-self: stretch;
+  min-width: 0;
+  padding: var(--space-3);
+}
+
 .file-viewer-text {
   align-self: stretch;
   margin: 0;

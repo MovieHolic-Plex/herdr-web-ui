@@ -128,7 +128,8 @@ describe("highlightOffThread", () => {
     const lines = await highlightOffThread(source, "ts").promise;
     expect(lines).not.toBeNull();
     expect(lines![0]![0]).toEqual({ text: "const", role: "keyword" });
-    expect(lines!.length).toBe(800);
+    expect(lines!.length).toBe(801);
+    expect(lines!.map((line) => line.map((token) => token.text).join("")).join("\n")).toBe("const a = 1;\n// done\n".repeat(400));
     expect(highlightKnown(source, "ts")).toEqual({ lines: lines!, tooLong: false });
     expect(highlightKnown(source, "ts")!.lines).toBe(lines!);
   });

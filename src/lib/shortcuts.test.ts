@@ -17,6 +17,11 @@ describe("matchShortcut", () => {
 
   it("matches every terminal-safe key", () => {
     expect(matchShortcut(keyEvent("j", { ctrlKey: true }), false)).toBe("toggle-view");
+    expect(matchShortcut(keyEvent("F", { ctrlKey: true }), false)).toBe("find");
+    expect(matchShortcut(keyEvent("F", { metaKey: true }), true)).toBe("find");
+    expect(matchShortcut(keyEvent("f", { ctrlKey: true, shiftKey: false }), false)).toBeNull();
+    expect(matchShortcut(keyEvent("f", { ctrlKey: true }), false, { find: null })).toBeNull();
+    expect(matchShortcut(keyEvent("g", { ctrlKey: true }), false, sanitizeShortcutOverrides({ find: "g" }))).toBe("find");
     expect(matchShortcut(keyEvent("B", { ctrlKey: true }), false)).toBe("toggle-sidebar");
     expect(matchShortcut(keyEvent("n", { ctrlKey: true }), false)).toBe("new-session");
     expect(matchShortcut(keyEvent("ArrowUp", { ctrlKey: true }), false)).toBe("previous-pane");
@@ -36,14 +41,16 @@ describe("matchShortcut", () => {
 describe("keepsArrowsForText", () => {
   const classes = (...names: string[]) => ({ contains: (name: string) => names.includes(name) });
   it("leaves Mod+Shift+arrows to the message box and other text fields, where they select text", () => {
-    expect(keepsArrowsForText({ tagName: "TEXTAREA", classList: classes("composer-text") })).toBe(true);
-    expect(keepsArrowsForText({ tagName: "INPUT", type: "text", classList: classes() })).toBe(true);
-    expect(keepsArrowsForText({ tagName: "INPUT", type: "search", classList: classes() })).toBe(true);
+    expect(keepsArrowsForText({ tagName: "TEXTAREA", value: "draft", classList: classes("composer-text") })).toBe(true);
+    expect(keepsArrowsForText({ tagName: "INPUT", type: "text", value: "a", classList: classes() })).toBe(true);
+    expect(keepsArrowsForText({ tagName: "INPUT", type: "search", value: "a", classList: classes() })).toBe(true);
     expect(keepsArrowsForText({ tagName: "DIV", isContentEditable: true, classList: classes() })).toBe(true);
   });
 
   it("switches panes from the terminal and anywhere that is no text field", () => {
     expect(keepsArrowsForText({ tagName: "TEXTAREA", classList: classes("xterm-helper-textarea") })).toBe(false);
+    expect(keepsArrowsForText({ tagName: "TEXTAREA", value: "", classList: classes("composer-text") })).toBe(false);
+    expect(keepsArrowsForText({ tagName: "INPUT", type: "text", value: "", classList: classes() })).toBe(false);
     expect(keepsArrowsForText({ tagName: "INPUT", type: "checkbox", classList: classes() })).toBe(false);
     expect(keepsArrowsForText({ tagName: "BUTTON", classList: classes() })).toBe(false);
     expect(keepsArrowsForText(null)).toBe(false);

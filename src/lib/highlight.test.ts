@@ -61,9 +61,9 @@ describe("highlightNow", () => {
     expect(lines[0]![0]!.role).toBe("inserted");
     expect(lines[1]![0]!.role).toBe("deleted");
   });
-  it("drops the empty line after a final newline, and keeps a blank line before it", () => {
-    expect(text(highlight("a\nb\n", "ts"))).toEqual(["a", "b"]);
-    expect(text(highlight("a\n\n", "ts"))).toEqual(["a", ""]);
+  it("preserves final newlines and blank lines as source text", () => {
+    expect(text(highlight("a\nb\n", "ts"))).toEqual(["a", "b", ""]);
+    expect(text(highlight("a\n\n", "ts"))).toEqual(["a", "", ""]);
   });
   it("splits CRLF without keeping the carriage return", () => {
     expect(text(highlight("a\r\nb", "ts"))).toEqual(["a", "b"]);

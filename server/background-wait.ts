@@ -12,8 +12,8 @@ export const WAIT_LIMIT_MS = 30 * 60_000;
 interface Pane {
   statusSeen: boolean;
   busy: boolean;
-  /** first rest since the person's prompt; automatic resumes never renew the limit */
-  restAt: number | null;
+  /** Observed rests, independent of delayed prompt discovery; the first after a prompt owns its budget. */
+  rests: number[];
   promptAt: number | null;
   /** the running subagents and background commands its turn started (server/claude-subagents.ts) */
   turnRunning: number;
@@ -50,7 +50,7 @@ export class BackgroundWait {
     } else if (pane.busy) {
       // `done` and `idle` are one rest: a finish seen is not a new one
       pane.busy = false;
-      pane.restAt ??= this.now();
+      pane.rests.push(this.now());
     }
     return this.settle(pane);
   }
@@ -63,12 +63,12 @@ export class BackgroundWait {
   /** How many of the pane's running subagents and commands its turn started. True when that changed whether it waits. */
   running(paneId: string, turnRunning: number, promptAt: number | null = null): boolean {
     const pane = this.pane(paneId);
-    if (promptAt !== pane.promptAt) {
+    const newPrompt = promptAt !== null && promptAt !== pane.promptAt;
+    if (newPrompt) {
       pane.promptAt = promptAt;
-      pane.restAt = null;
       pane.endedAt = null;
     }
-    if (turnRunning === 0 && pane.turnRunning > 0 && !pane.busy) pane.endedAt = this.now();
+    if (!newPrompt && turnRunning === 0 && pane.turnRunning > 0 && !pane.busy) pane.endedAt = this.now();
     pane.turnRunning = turnRunning;
     return this.settle(pane);
   }
@@ -82,19 +82,33 @@ export class BackgroundWait {
     return this.panes.get(paneId)?.waiting ?? false;
   }
 
+  /** Drop lifetime-specific waits, not the latest observed pane status or its freshness guard. */
+  reset(paneId: string): void {
+    const pane = this.panes.get(paneId);
+    if (!pane) return;
+    pane.rests = [];
+    pane.promptAt = null;
+    pane.turnRunning = 0;
+    pane.endedAt = null;
+    pane.waiting = false;
+  }
+
   forget(paneId: string): void {
     this.panes.delete(paneId);
   }
 
   private pane(paneId: string): Pane {
     let pane = this.panes.get(paneId);
-    if (!pane) this.panes.set(paneId, pane = { statusSeen: false, busy: false, restAt: null, promptAt: null, turnRunning: 0, endedAt: null, waiting: false });
+    if (!pane) this.panes.set(paneId, pane = { statusSeen: false, busy: false, rests: [], promptAt: null, turnRunning: 0, endedAt: null, waiting: false });
     return pane;
   }
 
   private settle(pane: Pane): boolean {
     const now = this.now();
-    const waiting = !pane.busy && pane.restAt !== null && now - pane.restAt < this.limits.limit
+    // Keep one expired rest: deleting all of them would renew an old prompt's budget on resume.
+    while (pane.rests.length > 1 && now - pane.rests[1]! >= this.limits.limit) pane.rests.shift();
+    const restAt = pane.rests.find((at) => pane.promptAt === null || at >= pane.promptAt);
+    const waiting = !pane.busy && restAt !== undefined && now - restAt < this.limits.limit
       && (pane.turnRunning > 0 || (pane.endedAt !== null && now - pane.endedAt < this.limits.grace));
     const changed = waiting !== pane.waiting;
     pane.waiting = waiting;

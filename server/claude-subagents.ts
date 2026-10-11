@@ -10,9 +10,9 @@ import type { HerdrPane, OmoTask } from "../shared/protocol.ts";
  * `agent-<id>.jsonl`, its own transcript. Whether it ended is told only by the parent
  * transcript: a background subagent by the `<task-notification>` Claude queues when it stops (a
  * teammate of an agent team gets none, and one's notice may not be written yet: its own file
- * ending in an `end_turn` answer, with no message to it after, says it stopped), a synchronous
- * one by the tool_result of its call (the "Async agent launched" acknowledgement of a
- * background call is no answer).
+ * ending in an `end_turn` answer or in the answer approving its lead's shutdown request, with
+ * no message to it after, says it stopped), a synchronous one by the tool_result of its call
+ * (the "Async agent launched" acknowledgement of a background call is no answer).
  *
  * A notification is carried up to three times (a user entry, a queue-operation, a queued_command
  * attachment) and the same agent notifies again each time it is resumed, so notices are kept per
@@ -317,7 +317,7 @@ const metas = new Map<string, { key: string; meta: Meta | null }>();
 function readMeta(path: string): Meta | null {
   const stat = plain(path, MAX_META_BYTES);
   if (stat === null) return null;
-  const key = `${stat.mtimeMs}:${stat.size}`;
+  const key = `${stat.id}:${stat.mtimeMs}:${stat.size}`;
   const known = metas.get(path);
   if (known?.key === key) return known.meta;
   let meta: Meta | null = null;
@@ -409,8 +409,17 @@ function isDispatch(entry: Row): boolean {
       && !content.some((block) => row(block)?.["type"] === "tool_result");
 }
 
+/** a teammate that approves its lead's shutdown request exits right after this answer, with no end_turn after the request */
+function approvedShutdown(entry: Row): boolean {
+  const result = row(entry["toolUseResult"]);
+  const requestId = result?.["request_id"];
+  const message = result?.["message"];
+  return result?.["success"] === true && typeof requestId === "string" && requestId.startsWith("shutdown-") && typeof message === "string" && message.startsWith("Shutdown approved");
+}
+
 /** A message to an agent or a result for it starts its turn again; its own answer ends it, unless it goes on (streamed blocks, a tool call). */
 function turnAfter(entry: Row, at: number | null, turnEndedAt: number | null): number | null {
+  if (entry["type"] === "user" && approvedShutdown(entry)) return at;
   if (entry["type"] === "user") return null;
   if (entry["type"] !== "assistant") return turnEndedAt;
   return row(row(entry["message"]))?.["stop_reason"] === "end_turn" ? at : null;
@@ -479,18 +488,25 @@ function readTail(path: string, stat: { size: number; mtimeMs: number; id: strin
 
 const subagentsDir = (parentPath: string): string => join(parentPath.replace(/\.jsonl$/, ""), "subagents");
 
+function folderVersion(dir: string): { sig: string; latestMs: number } {
+  try {
+    const stat = lstatSync(dir);
+    return { sig: `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.ctimeMs}`, latestMs: Math.max(stat.mtimeMs, stat.ctimeMs) };
+  } catch { return { sig: "-", latestMs: 0 }; }
+}
+
 /**
  * The folder's listing, read again only when the folder changed. A folder's time is coarse: one
  * that changed within a second of the read may have changed again with the same time, so only a
  * listing read after the folder had been quiet for a second is kept.
  */
-const listings = new Map<string, { mtimeMs: number; readAt: number; ids: string[] }>();
+const listings = new Map<string, { sig: string; readAt: number; ids: string[] }>();
 function agentIds(parentPath: string): string[] {
   const dir = subagentsDir(parentPath);
-  let mtimeMs: number;
-  try { mtimeMs = lstatSync(dir).mtimeMs; } catch { listings.delete(dir); return []; }
+  const { sig, latestMs } = folderVersion(dir);
+  if (sig === "-") { listings.delete(dir); return []; }
   const known = listings.get(dir);
-  if (known?.mtimeMs === mtimeMs && known.readAt - mtimeMs >= 1000) return known.ids;
+  if (known?.sig === sig && known.readAt - latestMs >= 1000) return known.ids;
   let ids: string[];
   try {
     ids = readdirSync(dir).slice(0, MAX_NAMES).flatMap((name) => {
@@ -498,19 +514,19 @@ function agentIds(parentPath: string): string[] {
       return id !== undefined && AGENT_ID.test(id) ? [id] : [];
     });
   } catch { return []; }
-  remember(listings, dir, { mtimeMs, readAt: Date.now(), ids }, 256);
+  remember(listings, dir, { sig, readAt: Date.now(), ids }, 256);
   return ids;
 }
 
 /** What changes when a session's subagents may have: the folder, parent transcript and every watched agent's own file. */
-export function subagentsSignature(parentPath: string, watch: readonly string[] = []): { sig: string; latestMs: number } {
+export function subagentsSignature(parentPath: string, watch: readonly string[] = [], now = Date.now()): { sig: string; latestMs: number } {
   const dir = subagentsDir(parentPath);
-  const folderMs = (() => { try { return lstatSync(dir).mtimeMs; } catch { return 0; } })();
+  const folder = folderVersion(dir);
   // A file may grow in the same coarse mtime tick, or be replaced with one of the same size.
-  const watched = watch.map((id) => plain(join(dir, `agent-${id}.jsonl`)));
+  const watched = [plain(parentPath), ...watch.map((id) => plain(join(dir, `agent-${id}.jsonl`)))];
   return {
-    sig: `${folderMs}:${plain(parentPath)?.size ?? -1}:${watched.map((stat) => stat ? `${stat.id}:${stat.size}:${stat.mtimeMs}` : "-").join(",")}`,
-    latestMs: Math.max(folderMs, ...watched.map((stat) => stat?.mtimeMs ?? 0)),
+    sig: `${folder.sig}:${watch.join(",")}:${watched.map((stat, index) => stat ? `${stat.id}:${stat.size}:${stat.mtimeMs}:${index > 0 && now - stat.mtimeMs > RECENT_MS}` : "-").join(",")}`,
+    latestMs: Math.max(folder.latestMs, ...watched.map((stat) => stat?.mtimeMs ?? 0)),
   };
 }
 
@@ -664,6 +680,8 @@ export interface ClaudeSubagentDeps {
   resolve: (pane: HerdrPane) => Promise<{ path: string; startedAt: number | null; pid?: number | null } | null>;
   /** the pid of the pane's Claude process now: a restart under the same session id is another process */
   pid?: (pane: HerdrPane) => Promise<number | null>;
+  /** Positive session/process replacement, never first discovery or a retry. Discard the old turn's transition evidence. */
+  onReset?: (paneId: string) => void;
   /**
    * A pane's running subagents and background commands changed, or how many of them its turn
    * started (`turnRunning`, server/background-wait.ts): no turn started or ended.
@@ -680,6 +698,7 @@ interface Tracked {
   /** when its transcript, and its process, were last looked for */
   at: number; pidAt: number;
   live: boolean; running: number; turnRunning: number; promptAt: number | null; sig: string | null;
+  reset?: boolean;
   /** every observed agent, whose own file can end or resume its turn */
   watch: string[];
 }
@@ -694,6 +713,8 @@ interface Tracked {
  */
 export class ClaudeSubagentStatus {
   private readonly panes = new Map<string, Tracked>();
+  /** Identity observations precede async resolution, including snapshots queued behind a lookup. */
+  private readonly sessions = new Map<string, string | null>();
   /** The latest lookup claim; a newer pane/session observation cancels an older answer. */
   private readonly lookups = new Map<string, { key: string }>();
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -715,6 +736,7 @@ export class ClaudeSubagentStatus {
 
   stop(): void {
     this.lookups.clear();
+    this.sessions.clear();
     this.queued = null;
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;
@@ -735,7 +757,9 @@ export class ClaudeSubagentStatus {
     const ids = new Set(panes.map((pane) => pane.pane_id));
     for (const paneId of this.panes.keys()) if (!ids.has(paneId)) this.panes.delete(paneId);
     for (const paneId of this.lookups.keys()) if (!ids.has(paneId)) this.lookups.delete(paneId);
+    for (const paneId of this.sessions.keys()) if (!ids.has(paneId)) this.sessions.delete(paneId);
     for (const pane of panes) {
+      this.observeSession(pane);
       const key = `${pane.agent_session?.value ?? ""}\0${pane.cwd ?? ""}`;
       if (pane.agent !== "claude" || this.lookups.get(pane.pane_id)?.key !== key) this.lookups.delete(pane.pane_id);
       if (pane.agent !== "claude") {
@@ -758,6 +782,7 @@ export class ClaudeSubagentStatus {
 
   /** One pane's transcript, looked up now if it is not known (or not known to be this session's). */
   async ensure(pane: HerdrPane): Promise<void> {
+    this.observeSession(pane);
     const tracked = this.panes.get(pane.pane_id);
     if (pane.agent !== "claude") {
       this.lookups.delete(pane.pane_id);
@@ -771,12 +796,12 @@ export class ClaudeSubagentStatus {
     this.lookups.set(pane.pane_id, claim);
     const due = !tracked || tracked.key !== key || !tracked.live || tracked.path === null || (session === "" && this.now() - tracked.at >= 6 * this.refreshMs);
     let again = due;
-    // the same session in another process (Claude quit and came back before the pane read as another agent)
-    if (!due && tracked && this.deps.pid && tracked.pid !== null && this.now() - tracked.pidAt >= this.refreshMs) {
+    // Retry incomplete process identity too: a transient lookup failure is not a permanent boundary.
+    if (!due && tracked && this.now() - tracked.pidAt >= this.refreshMs) {
       tracked.pidAt = this.now();
-      const pid = await this.deps.pid(pane).catch(() => null);
+      const pid = this.deps.pid ? await this.deps.pid(pane).catch(() => null) : null;
       if (this.lookups.get(pane.pane_id) !== claim) return;
-      again = pid !== null && pid !== tracked.pid;
+      again = tracked.startedAt === null || tracked.pid === null || (pid !== null && pid !== tracked.pid);
     }
     if (!again) return;
     if (tracked && tracked.key === key && tracked.path === null && this.now() - tracked.at < this.refreshMs) return;
@@ -784,8 +809,38 @@ export class ClaudeSubagentStatus {
     if (this.lookups.get(pane.pane_id) !== claim) return;
     const current = this.panes.get(pane.pane_id);
     const same = current?.key === key;
+    const reset = !!(found && current && ((current.path !== null && current.path !== found.path)
+      || (current.pid !== null && found.pid != null && current.pid !== found.pid)
+      || (current.startedAt !== null && found.startedAt !== null && current.startedAt !== found.startedAt)));
+    if (reset) this.deps.onReset?.(pane.pane_id);
     // the count it had goes on from here: another session with none says so at the next poll
-    this.panes.set(pane.pane_id, { key, path: found?.path ?? (same ? current.path : null), startedAt: found ? found.startedAt : same ? current.startedAt : null, pid: found ? found.pid ?? null : same ? current.pid : null, at: this.now(), pidAt: this.now(), live: true, running: current?.running ?? 0, turnRunning: current?.turnRunning ?? 0, promptAt: current?.promptAt ?? null, sig: null, watch: same && !found ? current.watch : [] });
+    this.panes.set(pane.pane_id, { key, path: found?.path ?? (same ? current.path : null), startedAt: found ? found.startedAt : same ? current.startedAt : null, pid: found ? found.pid ?? null : same ? current.pid : null, at: this.now(), pidAt: this.now(), live: true, running: current?.running ?? 0, turnRunning: current?.turnRunning ?? 0, promptAt: current?.promptAt ?? null, sig: null, watch: same && !found ? current.watch : [], reset });
+  }
+
+  private observeSession(pane: HerdrPane): void {
+    const previous = this.sessions.get(pane.pane_id);
+    const session = pane.agent === "claude" ? pane.agent_session?.value ?? "" : null;
+    // Missing hook identity becoming known (or a cwd change) is not a new lifetime.
+    const replaced = previous !== undefined && previous !== session
+      && (previous === null || session === null || (previous !== "" && session !== ""));
+    this.sessions.set(pane.pane_id, session === "" && previous != null ? previous : session);
+    if (!replaced) return;
+    this.lookups.delete(pane.pane_id);
+    this.deps.onReset?.(pane.pane_id);
+    const tracked = this.panes.get(pane.pane_id);
+    if (!tracked) return;
+    tracked.live = false;
+    tracked.reset = true;
+    // Leaving Claude retains the old transcript for the lost-task list, but a new Claude session cannot read it.
+    if (session !== null) {
+      tracked.path = null;
+      tracked.startedAt = null;
+      tracked.pid = null;
+      tracked.at = -Infinity;
+      tracked.watch = [];
+      tracked.sig = null;
+    }
+    this.poll(pane.pane_id);
   }
 
   /** Reads what the files gained, of every pane or of one (a turn just ended there); a pane whose counts changed is told. */
@@ -796,15 +851,20 @@ export class ClaudeSubagentStatus {
       let turnRunning = 0;
       let promptAt: number | null = null;
       if (tracked.path !== null && tracked.live) {
-        if (`${subagentsSignature(tracked.path, tracked.watch).sig}:${tracked.startedAt}` === tracked.sig) continue;
+        const scanAt = this.now();
+        const before = subagentsSignature(tracked.path, tracked.watch, scanAt);
+        if (`${before.sig}:${tracked.startedAt}` === tracked.sig) continue;
         const state = claudeSubagentState(tracked.path, true, this.now(), tracked.startedAt);
         ({ running, turnRunning, promptAt } = state);
         tracked.watch = state.watch;
-        const { sig, latestMs } = subagentsSignature(tracked.path, tracked.watch);
-        // file times are coarse: only a signature of files quiet for a second says nothing changed when it reads the same
-        tracked.sig = state.settled && this.now() - latestMs >= 1000 ? `${sig}:${tracked.startedAt}` : null;
+        const after = subagentsSignature(tracked.path, tracked.watch, this.now());
+        // Certify only the versions and dependency set read, never a concurrent append's newer signature.
+        // Coarse file clocks require every input to have been quiet before the scan began.
+        tracked.sig = state.settled && before.sig === after.sig && scanAt - before.latestMs >= 1000
+          ? `${after.sig}:${tracked.startedAt}` : null;
       }
-      if (running === tracked.running && turnRunning === tracked.turnRunning && promptAt === tracked.promptAt) continue;
+      if (!tracked.reset && running === tracked.running && turnRunning === tracked.turnRunning && promptAt === tracked.promptAt) continue;
+      tracked.reset = false;
       tracked.running = running;
       tracked.turnRunning = turnRunning;
       tracked.promptAt = promptAt;

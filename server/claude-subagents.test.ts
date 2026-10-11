@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { HerdrPane } from "../shared/protocol.ts";
+import { BackgroundWait, WAIT_LIMIT_MS } from "./background-wait.ts";
 import { ClaudeSubagentStatus, claudeSubagentState, claudeSubagents, forgetSubagents, lineNotifications, readLines, remember, subagentDetails, taskNotification, within } from "./claude-subagents.ts";
 
 const roots: string[] = [];
@@ -229,6 +230,170 @@ describe("taskNotification", () => {
 
 describe("ClaudeSubagentStatus", () => {
   const pane = (id: string, agent: string | null, session = "s1"): HerdrPane => ({ pane_id: id, agent, agent_session: { agent: agent ?? "", kind: "id", source: "hook", value: session }, cwd: "/work", agent_status: "idle", focused: false, revision: 1 }) as HerdrPane;
+
+  it("adopts a delayed transcript without losing the observed rest or renewing its deadline", async () => {
+    for (const order of ["early", "late", "baseline", "expired"] as const) {
+      const s = session();
+      s.prompt(1);
+      s.bash("suite", 2);
+      let now = NOW;
+      const waits = new BackgroundWait(() => now);
+      let resolve!: (value: { path: string; startedAt: null }) => void;
+      const pending = new Promise<{ path: string; startedAt: null }>((done) => { resolve = done; });
+      const status = new ClaudeSubagentStatus({ resolve: () => pending, now: () => now,
+        onReset: (id) => waits.reset(id), onChange: (id, _, running, prompt) => { waits.running(id, running, prompt); } });
+      waits.status("p1", order === "baseline" ? "done" : "working");
+      const refresh = status.refresh([pane("p1", "claude")]);
+      if (order === "early") { resolve({ path: s.path, startedAt: null }); await refresh; }
+      status.poll("p1");
+      waits.status("p1", "done");
+      now += order === "expired" ? WAIT_LIMIT_MS : WAIT_LIMIT_MS - 1;
+      if (order !== "early") { resolve({ path: s.path, startedAt: null }); await refresh; }
+      waits.tick();
+      expect(status.countOf("p1")).toBe(1);
+      expect(waits.waiting("p1")).toBe(order === "early" || order === "late");
+      now++;
+      waits.tick();
+      expect(waits.waiting("p1")).toBe(false);
+      status.stop();
+    }
+  });
+
+  it("forgets old transition evidence when a session changes during discovery, but keeps the new session's observations", async () => {
+    const s = session();
+    s.prompt(1);
+    s.bash("suite", 2);
+    const waits = new BackgroundWait(() => NOW);
+    let resolve!: (value: { path: string; startedAt: null }) => void;
+    const pending = new Promise<{ path: string; startedAt: null }>((done) => { resolve = done; });
+    const status = new ClaudeSubagentStatus({ resolve: () => pending, now: () => NOW,
+      onReset: (id) => waits.reset(id), onChange: (id, _, running, prompt) => { waits.running(id, running, prompt); } });
+    const first = status.refresh([pane("p1", "claude", "s1")]);
+    waits.status("p1", "working");
+    waits.status("p1", "done");
+    const next = status.refresh([pane("p1", "claude", "s2")]);
+    resolve({ path: s.path, startedAt: null });
+    await Promise.all([first, next]);
+    expect(status.countOf("p1")).toBe(1);
+    expect(waits.waiting("p1")).toBe(false);
+    waits.status("p1", "working");
+    waits.status("p1", "done");
+    expect(waits.waiting("p1")).toBe(true);
+    await status.refresh([pane("p1", "claude", "s3")]);
+    expect(status.countOf("p1")).toBe(1);
+    expect(waits.waiting("p1")).toBe(false);
+  });
+
+  it("retains the latest pane status, but no old hold, across asynchronous process replacement", async () => {
+    for (const latest of ["working", "done"] as const) {
+      const s = session();
+      s.prompt(1);
+      s.bash("suite", 2);
+      let now = NOW;
+      let pid = 1;
+      const waits = new BackgroundWait(() => now);
+      const replacement = Promise.withResolvers<{ path: string; startedAt: number; pid: number }>();
+      const status = new ClaudeSubagentStatus({
+        resolve: () => pid === 1 ? Promise.resolve({ path: s.path, startedAt: Date.parse(at(0)), pid }) : replacement.promise,
+        pid: async () => pid, now: () => now, refreshMs: 1000,
+        onReset: (id) => waits.reset(id),
+        onChange: (id, _, running, prompt) => { waits.running(id, running, prompt); },
+      });
+      await status.refresh([pane("p1", "claude")]);
+      waits.status("p1", "working");
+      waits.status("p1", "done");
+      expect(waits.waiting("p1")).toBe(true);
+      now += 1000;
+      pid = 2;
+      const refreshing = status.refresh([pane("p1", "claude")]);
+      waits.status("p1", latest);
+      replacement.resolve({ path: s.path, startedAt: Date.parse(at(0)) + 1, pid });
+      await refreshing;
+      expect(status.countOf("p1")).toBe(1);
+      expect(waits.waiting("p1")).toBe(false);
+      waits.seed("p1", latest === "working" ? "done" : "working");
+      now += 1000;
+      waits.status("p1", "done");
+      expect(waits.waiting("p1")).toBe(latest === "working");
+      now += WAIT_LIMIT_MS - 1;
+      waits.tick();
+      expect(waits.waiting("p1")).toBe(latest === "working");
+      now++;
+      waits.tick();
+      expect(waits.waiting("p1")).toBe(false);
+    }
+  });
+
+  it("rereads a same-size replaced parent and a replaced subagent directory", async () => {
+    const s = session();
+    const old = new Date(Date.now() - 5000);
+    const now = Date.now() + 5000;
+    const launch = (id: string) => json({ type: "user", timestamp: at(1), toolUseResult: { backgroundTaskId: id }, message: { content: [] } });
+    writeFileSync(s.path, launch("one"));
+    utimesSync(s.path, old, old);
+    const status = new ClaudeSubagentStatus({ resolve: async () => ({ path: s.path, startedAt: null }), onChange: () => {}, now: () => now });
+    await status.refresh([pane("p1", "claude")]);
+    status.poll();
+    expect(status.countOf("p1")).toBe(1);
+    writeFileSync(`${s.path}.new`, launch("two"));
+    utimesSync(`${s.path}.new`, old, old);
+    renameSync(`${s.path}.new`, s.path);
+    status.poll();
+    s.notify("two", 3, { summary: "Background command ended" });
+    status.poll();
+    expect(status.countOf("p1")).toBe(0);
+    const dir = join(s.path.replace(/\.jsonl$/, ""), "subagents");
+    s.agent("a1");
+    utimesSync(dir, old, old);
+    status.poll();
+    status.poll();
+    expect(status.countOf("p1")).toBe(1);
+    renameSync(dir, `${dir}.old`);
+    mkdirSync(dir);
+    s.agent("a2");
+    s.agent("a3");
+    utimesSync(join(dir, "agent-a2.meta.json"), old, old);
+    utimesSync(dir, old, old);
+    status.poll();
+    expect(status.countOf("p1")).toBe(2);
+    s.parent({ type: "assistant", timestamp: at(1), message: { content: [{ type: "tool_use", id: "toolu_a2", name: "Agent", input: {} }] } });
+    s.parent({ type: "user", timestamp: at(4), message: { content: [{ type: "tool_result", tool_use_id: "toolu_a2", content: "done" }] } });
+    status.poll();
+    expect(status.countOf("p1")).toBe(1);
+    // Reuse the agent ID and metadata size/mtime, but not the completed call's identity.
+    renameSync(dir, `${dir}.second`);
+    mkdirSync(dir);
+    s.agent("a2", { toolUseId: "toolu_b2" });
+    s.agent("a3");
+    utimesSync(join(dir, "agent-a2.meta.json"), old, old);
+    utimesSync(dir, old, old);
+    status.poll();
+    expect(status.countOf("p1")).toBe(2);
+    rmSync(join(dir, "agent-a2.meta.json"));
+    status.poll();
+    expect(status.countOf("p1")).toBe(1);
+  });
+
+  it("expires unchanged agent files exactly after a day, while newer agents remain counted", async () => {
+    const s = session();
+    const old = Date.now() - 5000;
+    for (const [id, stamp] of [["old", old], ["new", old + 2000]] as const) {
+      const file = s.agent(id);
+      utimesSync(file, new Date(stamp), new Date(stamp));
+    }
+    let now = old + 10000;
+    const status = new ClaudeSubagentStatus({ resolve: async () => ({ path: s.path, startedAt: null }), onChange: () => {}, now: () => now });
+    await status.refresh([pane("p1", "claude")]);
+    status.poll();
+    expect(status.countOf("p1")).toBe(2);
+    now = old + 24 * 60 * 60 * 1000;
+    status.poll();
+    expect(status.countOf("p1")).toBe(2);
+    now++;
+    status.poll();
+    expect(status.countOf("p1")).toBe(1);
+    expect(claudeSubagents(s.path, true, now).map((task) => task.id)).toEqual(["new"]);
+  });
 
   it("counts a Claude pane's running subagents and says only when the count changes", async () => {
     const s = session();
@@ -630,6 +795,46 @@ describe("claudeSubagents reading, upkeep", () => {
 describe("ClaudeSubagentStatus process", () => {
   const pane = (): HerdrPane => ({ pane_id: "p1", agent: "claude", agent_session: { agent: "claude", kind: "id", source: "hook", value: "s1" }, cwd: "/work", agent_status: "idle", focused: false, revision: 1 }) as HerdrPane;
 
+  it("recovers incomplete process boundaries, throttles failures, and keeps the known transcript", async () => {
+    for (const identity of ["missing-pid", "missing-start", "resolver-only"] as const) {
+      const s = session();
+      s.agent("orphan", { steps: [[1, 1]] });
+      let now = NOW;
+      let attempts = 0;
+      let recovered = false;
+      const status = new ClaudeSubagentStatus({
+        now: () => now, refreshMs: 1000, onChange: () => {},
+        ...(identity === "resolver-only" ? {} : { pid: async () => 123 }),
+        resolve: async () => {
+          attempts++;
+          if (recovered) return { path: s.path, pid: 123, startedAt: NOW };
+          if (attempts > 1) throw new Error("temporarily unavailable");
+          return { path: s.path, pid: identity === "missing-start" ? 123 : null, startedAt: null };
+        },
+      });
+      await status.refresh([pane()]);
+      expect(status.countOf("p1")).toBe(1);
+      now += 999;
+      await status.refresh([pane()]);
+      expect(attempts).toBe(1);
+      now++;
+      await status.refresh([pane()]);
+      expect(attempts).toBe(2);
+      expect(status.sessionOf("p1")?.path).toBe(s.path);
+      expect(status.countOf("p1")).toBe(1);
+      recovered = true;
+      await status.refresh([pane()]);
+      expect(attempts).toBe(2);
+      now += 1000;
+      await status.refresh([pane()]);
+      expect(status.sessionOf("p1")?.startedAt).toBe(NOW);
+      expect(status.countOf("p1")).toBe(0);
+      now += 1000;
+      await status.refresh([pane()]);
+      expect(attempts).toBe(3);
+    }
+  });
+
   it("looks the session up again when the pane's Claude process is another one", async () => {
     const s = session();
     let pid = 100;
@@ -660,6 +865,12 @@ describe("claudeSubagents, an agent's own turn", () => {
     entry(file, { type: "user", timestamp: at(1), message: { role: "user", content: "map it" } });
     return file;
   };
+  /** a lead's shutdown request at 5, the teammate's SendMessage answer at 6 and that call's result at 7 */
+  const shutdown = (file: string, result: { success: boolean; message: string; request_id: string }) => {
+    entry(file, { type: "user", timestamp: at(5), message: { role: "user", content: `<teammate-message teammate_id="team-lead">${JSON.stringify({ type: "shutdown_request", request_id: result.request_id })}</teammate-message>` } });
+    assistant(file, 6, "tool_use", "tool_use");
+    entry(file, { type: "user", timestamp: at(7), message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_shutdown", content: [{ type: "text", text: JSON.stringify(result) }] }] }, toolUseResult: result });
+  };
 
   it("reads a teammate whose last turn ended as completed, at that entry's time, and titles it by its name", () => {
     const s = session();
@@ -684,6 +895,31 @@ describe("claudeSubagents, an agent's own turn", () => {
     expect(ids(s.path).sort()).toEqual(["calling:running", "streaming:running", "woken:running"]);
     assistant(woken, 6, "end_turn");
     expect(claudeSubagents(s.path, true, NOW).find((task) => task.id === "woken")).toMatchObject({ status: "completed", ended_at: at(6) });
+  });
+
+  it("reads a teammate that approved its lead's shutdown request as completed, at that answer's time", () => {
+    const s = session();
+    const file = teammate(s, "draft-t1");
+    assistant(file, 3, "end_turn");
+    shutdown(file, { success: true, message: "Shutdown approved. Sent confirmation to team-lead. Agent draft-t1 is now exiting.", request_id: "shutdown-1791642615398@draft-t1" });
+    expect(claudeSubagents(s.path, true, NOW)).toMatchObject([{ id: "draft-t1", status: "completed", ended_at: at(7) }]);
+  });
+
+  it("reads a teammate whose shutdown answer is no approval as still running", () => {
+    const s = session();
+    const file = teammate(s, "draft-t2");
+    assistant(file, 3, "end_turn");
+    shutdown(file, { success: false, message: "Shutdown rejected", request_id: "shutdown-2@x" });
+    expect(ids(s.path)).toEqual(["draft-t2:running"]);
+  });
+
+  it("reads a teammate sent a message after its approved shutdown as running again", () => {
+    const s = session();
+    const file = teammate(s, "draft-t3");
+    assistant(file, 3, "end_turn");
+    shutdown(file, { success: true, message: "Shutdown approved. Sent confirmation to team-lead. Agent draft-t3 is now exiting.", request_id: "shutdown-3@draft-t3" });
+    entry(file, { type: "user", timestamp: at(9), message: { role: "user", content: "one more thing" } });
+    expect(ids(s.path)).toEqual(["draft-t3:running"]);
   });
 
   it("takes a background agent that ended its turn as done before its notification is written, and the newest word among them", () => {

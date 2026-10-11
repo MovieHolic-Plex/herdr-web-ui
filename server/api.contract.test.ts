@@ -1,10 +1,11 @@
 import { describe, expect, it, beforeAll, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
-import { chmodSync, mkdtempSync, existsSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, copyFileSync, mkdirSync, mkdtempSync, existsSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { ConversationMonitor } from "./conversation-monitor.ts";
 import { createServer } from "./index.ts";
-import type { AgentKind, AgentStatus, ApiError, HealthAuth, PushKey, RemoteAccess, SessionSnapshot, PaneReadResult, UsageReport, WorkspaceCreated, WorktreeListing, WorktreeOpened, WorktreeRemoved } from "../shared/protocol.ts";
+import type { AgentKind, AgentStatus, ApiError, HealthAuth, IntegrationsResponse, PushKey, RemoteAccess, SessionSnapshot, TabMoved, PaneFindResponse, PaneReadResult, UsageReport, WorkspaceCreated, WorktreeListing, WorktreeOpened, WorktreeRemoved } from "../shared/protocol.ts";
 import { HerdrUpdater } from "./herdr-update.ts";
 import { noInstalledNotes, unmanagedUpdateStatus, type HerdrUpdateStatus, type InstalledNotes, type UpdateNotes } from "../shared/update.ts";
 import { USAGE_PROVIDERS, UsageService } from "./usage.ts";
@@ -17,6 +18,7 @@ import { descriptorPath, type BridgeDescriptor } from "./bridge.ts";
 import { handleMachineRequest } from "./machine-api.ts";
 import type { MachineManager } from "./machines.ts";
 import { TailnetIdentitySource } from "./tailscale.ts";
+import { forgetTranscriptState } from "./conversation.ts";
 
 /**
  * Contract test for herdr-web-ui's HTTP + WS surface.
@@ -39,6 +41,188 @@ afterAll(() => {
 });
 
 const base = () => `http://localhost:${server.port}`;
+
+describe("Grok conversation API", () => {
+  it.skipIf(process.platform !== "linux")("uses exact process/session evidence, validators and revision-bound output refs", async () => {
+    const root = mkdtempSync(join(tmpdir(), "herdr-web-ui-grok-contract-"));
+    const id = "00000000-0000-4000-8000-000000000001";
+    const directory = join(root, "sessions", "%2Ffictional", id);
+    mkdirSync(directory, { recursive: true });
+    const path = join(directory, "updates.jsonl");
+    const event = (update: object, extension = false) => JSON.stringify({ timestamp: 1700000000, method: extension ? "_x.ai/session/update" : "session/update", params: { sessionId: id, update } }) + "\n";
+    const user = event({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "fictional prompt" }, _meta: { promptIndex: 0 } });
+    const call = event({ sessionUpdate: "tool_call", toolCallId: "fictional-call", title: "Read", rawInput: { path: "fiction.txt" } });
+    const output = (text: string) => event({ sessionUpdate: "tool_call_update", toolCallId: "fictional-call", content: [{ type: "content", content: { type: "text", text } }] });
+    writeFileSync(path, user + call + output("x".repeat(5000)));
+    const events = join(directory, "events.jsonl");
+    writeFileSync(events, "");
+    // A native stand-in owns the fd evidence and only sleeps; no model or user's store.
+    const executable = join(root, "grok");
+    copyFileSync("/bin/sleep", join(root, "grok-1.0.50-linux-x86_64")); symlinkSync("grok-1.0.50-linux-x86_64", executable); chmodSync(executable, 0o755);
+    const created = await workspaceCreate({ cwd: root, label: "herdr-web-ui-test-grok-api" });
+    let app: ReturnType<typeof createServer> | undefined;
+    try {
+      const paneId = created.root_pane.pane_id;
+      await herdrRpc("pane.send_text", { pane_id: paneId, text: `${executable} 600 3<${events}\n` });
+      for (const deadline = Date.now() + 10_000;;) {
+        if ((await sessionSnapshot()).panes.find((pane) => pane.pane_id === paneId)?.agent === "grok") break;
+        if (Date.now() > deadline) throw new Error("fixture Grok process did not start");
+        await Bun.sleep(50);
+      }
+      let reportSequence = 0;
+      // Stands in for the SessionStart report Grok's herdr integration makes: Herdr 0.9.3
+      // replaces a Grok ID only for a newer "new" report.
+      const report = (session: string, source = "new") => herdrRpc("pane.report_agent_session", { pane_id: paneId, agent: "grok", source: "herdr:grok", seq: ++reportSequence, agent_session_id: session, session_start_source: source });
+      await report(id);
+      app = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir: join(root, "state"), grokHome: root });
+      const url = `http://127.0.0.1:${app.port}/api/pane/conversation?pane_id=${encodeURIComponent(paneId)}`;
+      const first = await fetch(url);
+      const body = await first.json();
+      expect(body.source).toBe("grok-transcript");
+      expect(body.activity).toBe("working");
+      expect(body.turns[0].parts[0].text).toBe("fictional prompt");
+      expect((await fetch(url, { headers: { "if-none-match": first.headers.get("etag")! } })).status).toBe(304);
+      const ref = body.turns[1].parts[0].output_ref;
+      const outputUrl = `http://127.0.0.1:${app.port}/api/pane/conversation/tool-output?${new URLSearchParams({ pane_id: paneId, ref })}`;
+      const whole = await fetch(outputUrl);
+      expect(whole.headers.get("cache-control")).toBe("private, no-store");
+      expect(await whole.text()).toBe("x".repeat(5000));
+      appendFileSync(path, output("y".repeat(5000)));
+      expect((await fetch(outputUrl)).status).toBe(404);
+      const next = await fetch(url);
+      expect(next.headers.get("etag")).not.toBe(first.headers.get("etag"));
+      appendFileSync(path, event({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "fictional thought" } }));
+      const thinking = await fetch(url);
+      expect((await thinking.json()).activity).toBe("thinking");
+      expect(thinking.headers.get("etag")).not.toBe(next.headers.get("etag"));
+      appendFileSync(path, event({ sessionUpdate: "turn_completed" }));
+      expect((await (await fetch(url)).json()).activity).toBe("idle");
+      appendFileSync(path, event({ sessionUpdate: "rewind_marker", target_prompt_index: 0 }, true));
+      expect((await fetch(`${url}&from=${encodeURIComponent(`${body.history_id}:0`)}`)).status).toBe(409);
+      const local = await fetch(url.replace("/api/pane/", "/api/machines/local/pane/"));
+      expect((await local.json()).turns).toEqual([]);
+      const missing = "00000000-0000-4000-8000-000000000002";
+      await report(missing, "resume");
+      expect((await sessionSnapshot()).panes.find((pane) => pane.pane_id === paneId)?.agent_session?.value).toBe(id);
+      await report(missing);
+      for (const deadline = Date.now() + 5000;;) {
+        if ((await sessionSnapshot()).panes.find((pane) => pane.pane_id === paneId)?.agent_session?.value === missing) break;
+        if (Date.now() > deadline) throw new Error("Herdr did not apply the second session report");
+        await Bun.sleep(50);
+      }
+      expect(await (await fetch(url)).json()).toEqual({ source: "scrollback", turns: [] });
+    } finally {
+      app?.stop(); await workspaceClose(created.workspace.workspace_id);
+      forgetTranscriptState(); rmSync(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+});
+
+describe("Agy conversation API", () => {
+  it.skipIf(process.platform !== "linux")("binds the selected held lock, honors saved rewinds and recovers from an unwritten store", async () => {
+    const root = mkdtempSync(join(tmpdir(), "herdr-web-ui-agy-contract-"));
+    const id = "00000000-0000-4000-8000-000000000031";
+    const path = join(root, "brain", id, ".system_generated", "logs", "transcript_full.jsonl");
+    mkdirSync(join(path, ".."), { recursive: true });
+    mkdirSync(join(root, "conversations")); mkdirSync(join(root, "presence"));
+    const lock = join(root, "presence", `${id}.lock`);
+    writeFileSync(lock, "");
+    // Another unheld lock in the same store must never select a conversation.
+    writeFileSync(join(root, "presence", "00000000-0000-4000-8000-000000000032.lock"), "");
+    const executable = join(root, "agy");
+    copyFileSync("/bin/sleep", executable); chmodSync(executable, 0o755);
+    const created = await workspaceCreate({ cwd: root, label: "herdr-web-ui-test-agy-api" });
+    let app: ReturnType<typeof createServer> | undefined, db: Database | undefined;
+    let monitor: ConversationMonitor | undefined;
+    try {
+      const paneId = created.root_pane.pane_id;
+      await herdrRpc("pane.send_text", { pane_id: paneId, text: `${executable} 600 3<${lock}\n` });
+      for (const deadline = Date.now() + 10_000;;) {
+        if ((await sessionSnapshot()).panes.find((pane) => pane.pane_id === paneId)?.agent === "agy") break;
+        if (Date.now() > deadline) throw new Error("fixture Agy process did not start");
+        await Bun.sleep(50);
+      }
+      app = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir: join(root, "state") });
+      const url = `http://127.0.0.1:${app.port}/api/pane/conversation?pane_id=${encodeURIComponent(paneId)}`;
+      expect(await (await fetch(url)).json()).toEqual({ source: "scrollback", turns: [] });
+      db = new Database(join(root, "conversations", `${id}.db`));
+      db.exec("PRAGMA journal_mode=WAL; CREATE TABLE steps(idx INTEGER PRIMARY KEY)");
+      const empty = await (await fetch(url)).json();
+      expect(empty.source).toBe("agy-transcript"); expect(empty.turns).toEqual([]);
+      const row = (step_index: number, type: string, content: string) => JSON.stringify({ step_index, type, status: "DONE", content }) + "\n";
+      db.exec("INSERT INTO steps VALUES (0), (1)");
+      writeFileSync(path, row(0, "USER_INPUT", "fictional prompt") + row(1, "GENERIC", "x".repeat(5000)));
+      const first = await fetch(url), body = await first.json();
+      expect(body.source).toBe("agy-transcript");
+      expect(body.activity).toBe("working");
+      expect(body.turns[0].parts[0].text).toBe("fictional prompt");
+      expect((await fetch(url, { headers: { "if-none-match": first.headers.get("etag")! } })).status).toBe(304);
+      const ref = body.turns[1].parts[0].output_ref;
+      const outputUrl = `http://127.0.0.1:${app.port}/api/pane/conversation/tool-output?${new URLSearchParams({ pane_id: paneId, ref })}`;
+      expect(await (await fetch(outputUrl)).text()).toBe("x".repeat(5000));
+      db.exec("INSERT INTO steps VALUES (2)");
+      appendFileSync(path, row(2, "PLANNER_RESPONSE", "Finished"));
+      const completed = await fetch(url, { headers: { "if-none-match": first.headers.get("etag")! } });
+      expect(completed.status).toBe(200);
+      expect((await completed.json()).activity).toBe("idle");
+      expect(completed.headers.get("etag")).not.toBe(first.headers.get("etag"));
+      db.exec("INSERT INTO steps VALUES (3)");
+      appendFileSync(path, row(3, "USER_INPUT", "New work"));
+      expect((await (await fetch(url)).json()).activity).toBe("working");
+      const changes: string[] = [];
+      monitor = new ConversationMonitor((_pane, signature) => changes.push(signature));
+      monitor.watch(paneId);
+      const changed = async (count: number) => {
+        for (const deadline = Date.now() + 5000; changes.length <= count;) {
+          if (Date.now() > deadline) throw new Error("Agy catalog change was not pushed");
+          await Bun.sleep(20);
+        }
+      };
+      await changed(0);
+      const beforeCut = changes.length;
+      db.exec("DELETE FROM steps WHERE idx >= 1");
+      await changed(beforeCut);
+      expect((await (await fetch(url)).json()).turns).toHaveLength(1);
+      expect((await fetch(`${url}&from=${encodeURIComponent(`${body.history_id}:0`)}`)).status).toBe(409);
+      expect((await fetch(outputUrl)).status).toBe(404);
+      forgetTranscriptState();
+      const local = await fetch(url.replace("/api/pane/", "/api/machines/local/pane/"));
+      expect((await local.json()).turns).toHaveLength(1);
+      db.exec("DROP TABLE steps");
+      expect(await (await fetch(url)).json()).toEqual({ source: "scrollback", turns: [] });
+    } finally {
+      monitor?.stop(); app?.stop(); db?.close(); await workspaceClose(created.workspace.workspace_id);
+      forgetTranscriptState(); rmSync(root, { recursive: true, force: true });
+    }
+  }, 20_000);
+});
+
+describe("single-pane context lookup", () => {
+  for (const route of ["commands", "files"] as const) {
+    it(`rejects an unknown pane on /api/pane/${route} with the shared error envelope`, async () => {
+      const response = await fetch(`${base()}/api/pane/${route}?pane_id=w9999:p9999`);
+      expect(response.status).toBe(404);
+      const body: ApiError = await response.json();
+      expect(body.error.code).toBe("pane_not_found");
+      expect(typeof body.error.message).toBe("string");
+    });
+  }
+});
+
+describe("GET /api/pane/plan", () => {
+  it("requires GET and a pane id with the shared error envelope", async () => {
+    for (const [url, method, code] of [
+      [`${base()}/api/pane/plan`, "GET", "missing_pane_id"],
+      [`${base()}/api/pane/plan?pane_id=w9999:p9999`, "POST", "method_not_allowed"],
+    ] as const) {
+      const response = await fetch(url, { method });
+      expect(response.status).toBe(400);
+      const body: ApiError = await response.json();
+      expect(body.error.code).toBe(code);
+      expect(typeof body.error.message).toBe("string");
+    }
+  });
+});
 
 describe("Devin conversation API", () => {
   it("keeps the terminal fallback rather than guessing a shell pane's session", async () => {
@@ -352,9 +536,9 @@ describe("phone access", () => {
 describe("mutation body validation", () => {
   it("rejects non-object JSON without touching herdr or losing the error envelope", async () => {
     for (const path of [
-      "/api/workspace/create", "/api/tab/create", "/api/tab/rename", "/api/tab/close", "/api/workspace/rename", "/api/workspace/move", "/api/workspace/close",
-      "/api/pane/rename", "/api/pane/input", "/api/pane/keys", "/api/pane/close", "/api/pane/image",
-      "/api/pane/scroll",
+      "/api/workspace/create", "/api/tab/create", "/api/tab/rename", "/api/tab/close", "/api/tab/move", "/api/workspace/rename", "/api/workspace/move", "/api/workspace/close",
+      "/api/pane/rename", "/api/pane/input", "/api/pane/keys", "/api/pane/close", "/api/pane/move", "/api/pane/image",
+      "/api/pane/scroll", "/api/agent/rename",
     ]) {
       for (const body of [null, [], "text", 42, true]) {
         const response = await fetch(`${base()}${path}`, {
@@ -441,6 +625,153 @@ describe("tab rename and close", () => {
   });
 });
 
+describe("tab reorder", () => {
+  const post = (body: unknown, path = "/api/tab/move") => fetch(`${base()}${path}`, {
+    method: "POST", headers: { "content-type": "application/json", "x-herdr-machine": "1" }, body: JSON.stringify(body),
+  });
+  it("requires a tab and a non-negative safe insertion boundary", async () => {
+    expect((await fetch(`${base()}/api/tab/move`)).status).toBe(400);
+    for (const tab_id of [undefined, null, "", 4, true]) {
+      const result = await post({ tab_id, insert_index: 0 });
+      expect(result.status).toBe(400);
+      expect(((await result.json()) as ApiError).error.code).toBe("missing_tab_id");
+    }
+    for (const insert_index of [undefined, null, -1, 0.5, "1", Number.MAX_SAFE_INTEGER + 1]) {
+      const result = await post({ tab_id: "unknown:t9", insert_index });
+      expect(result.status).toBe(400);
+      expect(((await result.json()) as ApiError).error.code).toBe("invalid_index");
+    }
+    const missing = await post({ tab_id: "unknown:t9", insert_index: 0 });
+    expect(missing.status).toBe(404);
+    expect(((await missing.json()) as ApiError).error.code).toBe("tab_not_found");
+  });
+  it("uses boundaries before removal, preserves focus and IDs, and rejects out-of-range moves", async () => {
+    const owned = await workspaceCreate({ cwd: tmpdir(), label: "herdr-web-ui-test-tab-reorder" });
+    const id = owned.workspace.workspace_id;
+    try {
+      const second = await tabCreate({ workspaceId: id, label: "build" });
+      const third = await tabCreate({ workspaceId: id });
+      const firstId = owned.tab.tab_id;
+      const initial = await sessionSnapshot();
+      const nativeIds = () => sessionSnapshot().then((snapshot) => snapshot.tabs.filter((tab) => tab.workspace_id === id).map((tab) => tab.tab_id));
+      for (const [boundary, expected] of [[3, [second.tab.tab_id, third.tab.tab_id, firstId]], [0, [firstId, second.tab.tab_id, third.tab.tab_id]]] as const) {
+        const response = await post({ tab_id: firstId, insert_index: boundary }, "/api/machines/local/tab/move");
+        expect(response.status).toBe(200);
+        const result = await response.json() as TabMoved;
+        expect(result.ok).toBe(true);
+        expect(result.tabs.map((tab) => tab.tab_id)).toEqual([...expected]);
+        expect(result.tabs.find((tab) => tab.tab_id === second.tab.tab_id)?.label).toBe("build");
+        expect(await nativeIds()).toEqual([...expected]);
+        const snapshot = await sessionSnapshot();
+        expect(snapshot.focused_pane_id).toBe(initial.focused_pane_id);
+        expect(snapshot.focused_tab_id).toBe(initial.focused_tab_id);
+        expect(snapshot.panes.filter((pane) => pane.workspace_id === id).map((pane) => pane.pane_id).sort()).toEqual(initial.panes.filter((pane) => pane.workspace_id === id).map((pane) => pane.pane_id).sort());
+      }
+      const bad = await post({ tab_id: firstId, insert_index: 4 });
+      expect(bad.status).toBe(404);
+      expect(((await bad.json()) as ApiError).error.code).toBe("tab_move_failed");
+      expect(await nativeIds()).toEqual([firstId, second.tab.tab_id, third.tab.tab_id]);
+      // Either boundary touching the source is a no-op, not a close/recreate.
+      expect((await post({ tab_id: firstId, insert_index: 1 })).status).toBe(200);
+      expect(await nativeIds()).toEqual([firstId, second.tab.tab_id, third.tab.tab_id]);
+    } finally { await workspaceClose(id); }
+  });
+});
+
+describe("agent rename", () => {
+  const post = (body: unknown) => fetch(`${base()}/api/agent/rename`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const nameOf = async (paneId: string): Promise<string | null> =>
+    (await herdrRpc<{ agents: Array<{ pane_id: string; name?: string | null }> }>("agent.list", {})).agents.find((agent) => agent.pane_id === paneId)?.name ?? null;
+
+  it("sets, reads back and clears a pane's agent name, and passes herdr's refusals through", async () => {
+    const owned = await workspaceCreate({ cwd: tmpdir(), label: "herdr-web-ui-test-agent-rename" });
+    const id = owned.workspace.workspace_id;
+    const paneId = owned.root_pane.pane_id;
+    try {
+      // a shell pane has no live agent to name
+      const shell = await post({ pane_id: paneId, name: "webui-rename-a" });
+      expect(shell.status).toBe(404);
+      expect(((await shell.json()) as ApiError).error.code).toBe("agent_not_found");
+
+      await herdrRpc("pane.report_agent", { pane_id: paneId, source: "herdr-web-ui-test", agent: "claude", state: "idle" });
+      const set = await post({ pane_id: paneId, name: "webui-rename-a" });
+      expect(set.status).toBe(200);
+      expect(await set.json()).toEqual({ ok: true });
+      expect(await nameOf(paneId)).toBe("webui-rename-a");
+      // the browser reads it off the session snapshot's agents
+      const session = (await (await fetch(`${base()}/api/session`)).json()) as { snapshot: SessionSnapshot };
+      expect(session.snapshot.agents.find((agent) => agent.pane_id === paneId)?.name).toBe("webui-rename-a");
+
+      // herdr's rule, in herdr's words, and the name stays
+      const invalid = await post({ pane_id: paneId, name: "Bad Name" });
+      expect(invalid.status).toBe(404);
+      const refused = (await invalid.json()) as ApiError;
+      expect(refused.error.code).toBe("invalid_agent_name");
+      expect(refused.error.message).toContain("lowercase");
+      expect(await nameOf(paneId)).toBe("webui-rename-a");
+
+      // unique among the session's live agents
+      const second = await tabCreate({ workspaceId: id });
+      await herdrRpc("pane.report_agent", { pane_id: second.root_pane.pane_id, source: "herdr-web-ui-test", agent: "codex", state: "working" });
+      const taken = await post({ pane_id: second.root_pane.pane_id, name: "webui-rename-a" });
+      expect(taken.status).toBe(404);
+      expect(((await taken.json()) as ApiError).error.code).toBe("agent_name_taken");
+      expect(await nameOf(second.root_pane.pane_id)).toBeNull();
+
+      // the local-PC alias reaches it, and null clears
+      const alias = await fetch(`${base()}/api/machines/local/agent/rename`, {
+        method: "POST", headers: { "content-type": "application/json", "x-herdr-machine": "1" }, body: JSON.stringify({ pane_id: paneId, name: null }),
+      });
+      expect(alias.status).toBe(200);
+      expect(await alias.json()).toEqual({ ok: true });
+      expect(await nameOf(paneId)).toBeNull();
+    } finally { await workspaceClose(id); }
+  });
+
+  it("forwards a remote rename with the registered bridge token, not the browser's", async () => {
+    const owned = await workspaceCreate({ cwd: tmpdir(), label: "herdr-web-ui-test-agent-rename-bridge" });
+    const paneId = owned.root_pane.pane_id;
+    const state = mkdtempSync(join(tmpdir(), "herdr-web-ui-agent-rename-bridge-"));
+    // the other PC's bridge asks its browsers for a token of its own; the proxy holds only the bridge token it registered
+    const bridge = createServer({ port: 0, hostname: "127.0.0.1", token: "test-browser-token", machines: false, registerBridge: true, stateDir: state, tailscaleOwner: null });
+    const registered = JSON.parse(readFileSync(descriptorPath(), "utf8")) as BridgeDescriptor;
+    const endpoint = `http://127.0.0.1:${bridge.port}`;
+    const manager = { endpoint: (id: string) => id === "rename-remote" ? { url: endpoint, token: registered.token } : null, trackTerminal: () => () => {} } as unknown as MachineManager;
+    try {
+      expect(registered.token).not.toBe("test-browser-token");
+      await herdrRpc("pane.report_agent", { pane_id: paneId, source: "herdr-web-ui-test", agent: "claude", state: "idle" });
+      // the browser token is deliberately absent: the proxy must authenticate with the bridge token
+      expect((await fetch(`${endpoint}/api/agent/rename`, { method: "POST", body: "{}" })).status).toBe(401);
+      const res = await handleMachineRequest(new Request("http://127.0.0.1/api/machines/rename-remote/agent/rename", {
+        method: "POST", headers: { "content-type": "application/json", "x-herdr-machine": "1" },
+        body: JSON.stringify({ pane_id: paneId, name: "webui-rename-b" }),
+      }), manager);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(await nameOf(paneId)).toBe("webui-rename-b");
+    } finally {
+      bridge.stop();
+      await workspaceClose(owned.workspace.workspace_id);
+      rmSync(state, { recursive: true, force: true });
+    }
+  });
+
+  it("validates the body before asking herdr", async () => {
+    for (const [body, code] of [
+      [{}, "missing_pane_id"],
+      [{ pane_id: "", name: "x" }, "missing_pane_id"],
+      // an omitted name is not a clear: only null is
+      [{ pane_id: "w1:p1" }, "invalid_name"],
+      [{ pane_id: "w1:p1", name: 42 }, "invalid_name"],
+    ] as const) {
+      const response = await post(body);
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as ApiError).error.code).toBe(code);
+    }
+    expect((await fetch(`${base()}/api/agent/rename`)).status).toBe(400);
+  });
+});
+
 // Tab creation shares workspace creation's agent launch (#362 by @WOULDU-pres): the cases
 // below prove the tab half of that path against a real herdr.
 describe("tab creation", () => {
@@ -516,7 +847,7 @@ describe("tab creation", () => {
       const created = await res.json() as WorkspaceCreated;
       expect(created).toMatchObject({ workspace_id: owned.workspace.workspace_id, agent_started: false });
       expect(created.pane_id).not.toBe(owned.root_pane.pane_id);
-      expect((await fetch(`${base()}/api/machines/local/tab/move`)).status).toBe(404);
+      expect((await fetch(`${base()}/api/machines/local/tab/move/extra`)).status).toBe(404);
     } finally { await workspaceClose(owned.workspace.workspace_id); }
   });
 
@@ -539,6 +870,14 @@ describe("tab creation", () => {
       const created = await res.json() as WorkspaceCreated;
       expect(created).toMatchObject({ workspace_id: owned.workspace.workspace_id, agent_started: false });
       expect(created.pane_id).not.toBe(owned.root_pane.pane_id);
+
+      const createdTab = (await sessionSnapshot()).panes.find((pane) => pane.pane_id === created.pane_id)!.tab_id;
+      const moved = await handleMachineRequest(new Request("http://127.0.0.1/api/machines/tab-remote/tab/move", {
+        method: "POST", headers: { "content-type": "application/json", "x-herdr-machine": "1" },
+        body: JSON.stringify({ tab_id: createdTab, insert_index: 0 }),
+      }), manager);
+      expect(moved?.status).toBe(200);
+      expect(((await moved!.json()) as TabMoved).tabs[0]?.tab_id).toBe(createdTab);
       const management = await fetch(`${endpoint}/api/machines`, { headers: { authorization: `Bearer ${registered.token}` } });
       expect(management.status).toBe(401);
     } finally {
@@ -618,6 +957,20 @@ describe("workspace and discovery endpoints", () => {
     expect(agents.map((agent) => agent.label)).toEqual([...agents.map((agent) => agent.label)].sort((a, b) => a.localeCompare(b)));
   });
 
+  it("lists herdr's integrations as integration.list reports them, and refuses anything but GET", async () => {
+    const res = await fetch(`${base()}/api/integrations`);
+    expect(res.status).toBe(200);
+    const { integrations } = (await res.json()) as IntegrationsResponse;
+    const fromHerdr = (await herdrRpc<IntegrationsResponse>("integration.list", {})).integrations;
+    expect(integrations).toEqual(fromHerdr);
+    const claude = integrations.find((integration) => integration.target === "claude");
+    expect(claude).toMatchObject({ label: "claude", command: "claude" });
+    for (const integration of integrations) expect(["not_installed", "current", "outdated"]).toContain(integration.state);
+    const post = await fetch(`${base()}/api/integrations`, { method: "POST" });
+    expect(post.status).toBe(400);
+    expect(((await post.json()) as ApiError).error.code).toBe("method_not_allowed");
+  });
+
   it("offers omo and gjc, which herdr cannot start, exactly when they are on PATH", async () => {
     const bin = mkdtempSync(join(tmpdir(), "herdr-web-ui-shell-agents-"));
     const path = process.env["PATH"];
@@ -669,7 +1022,7 @@ describe("workspace and discovery endpoints", () => {
 
     const prompt = await fetch(`${base()}/api/pane/prompt?pane_id=${encodeURIComponent(paneId)}`);
     expect(prompt.status).toBe(200);
-    expect(await prompt.json()).toEqual({ prompt: null, suggestion: null });
+    expect(await prompt.json()).toEqual({ prompt: null, suggestion: null, restored: null });
 
     for (const [path, body] of [
       ["/api/workspace/rename", { workspace_id: workspaceId, label: `${label}-renamed` }],
@@ -784,6 +1137,52 @@ describe("workspace and discovery endpoints", () => {
     }
   }, 30_000);
 
+  it("starts a worktree asked from a workspace on a linked checkout at the repository's own workspace", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "herdr-web-ui-worktree-linked-"));
+    const git = (...args: string[]) => Bun.spawnSync(["git", "-c", "user.name=herdr-web-ui test", "-c", "user.email=test@example.invalid", ...args], { cwd: repo, stdout: "pipe", stderr: "pipe" });
+    expect(git("init", "-q", "-b", "main").exitCode).toBe(0);
+    writeFileSync(join(repo, "README.md"), "worktree fixture\n");
+    expect(git("add", "README.md").exitCode).toBe(0);
+    expect(git("commit", "-q", "-m", "fixture").exitCode).toBe(0);
+    const checkouts = `${repo}-checkouts`;
+    // a checkout git made, opened as a plain workspace: herdr does not mark it as a worktree
+    expect(git("worktree", "add", "-q", "-b", "herdr-web-ui-test-linked", join(checkouts, "linked")).exitCode).toBe(0);
+    const linked = await workspaceCreate({ cwd: join(checkouts, "linked"), label: "herdr-web-ui-test-worktree-linked" });
+    const owned = [linked.workspace.workspace_id];
+    const post = (path: string, body: unknown) => fetch(`${base()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    try {
+      expect((await sessionSnapshot()).workspaces.find((workspace) => workspace.workspace_id === linked.workspace.workspace_id)?.worktree?.is_linked_worktree).not.toBeTrue();
+      // the repository's own workspace is not open: herdr's refusal is the answer
+      const alone = await post("/api/worktree/create", { workspace_id: linked.workspace.workspace_id, branch: "herdr-web-ui-test-alone", path: join(checkouts, "alone") });
+      expect(alone.status).toBe(404);
+      expect(((await alone.json()) as ApiError).error.code).toBe("linked_worktree_source");
+      expect(existsSync(join(checkouts, "alone"))).toBeFalse();
+
+      const parent = await workspaceCreate({ cwd: repo, label: "herdr-web-ui-test-worktree-linked-parent" });
+      owned.push(parent.workspace.workspace_id);
+      const create = await post("/api/worktree/create", { workspace_id: linked.workspace.workspace_id, branch: "herdr-web-ui-test-from-linked", path: join(checkouts, "from-linked") });
+      expect(create.status).toBe(200);
+      const opened = (await create.json()) as WorktreeOpened;
+      owned.push(opened.workspace_id);
+      expect(opened.branch).toBe("herdr-web-ui-test-from-linked");
+      expect(existsSync(join(checkouts, "from-linked"))).toBeTrue();
+      expect((await sessionSnapshot()).workspaces.find((workspace) => workspace.workspace_id === opened.workspace_id)?.worktree?.is_linked_worktree).toBeTrue();
+
+      const again = await post("/api/worktree/open", { workspace_id: linked.workspace.workspace_id, path: join(checkouts, "from-linked") });
+      expect(again.status).toBe(200);
+      expect((await again.json()) as WorktreeOpened).toMatchObject({ workspace_id: opened.workspace_id, already_open: true });
+    } finally {
+      const repoRoot = realpathSync(repo);
+      const snapshot = await sessionSnapshot().catch(() => null);
+      for (const workspace of snapshot?.workspaces ?? []) {
+        if (workspace.worktree?.is_linked_worktree && workspace.worktree.repo_root === repoRoot) await herdrRpc("worktree.remove", { workspace_id: workspace.workspace_id, force: true }).catch(() => undefined);
+      }
+      for (const id of owned) await herdrRpc("workspace.close", { workspace_id: id }).catch(() => undefined);
+      rmSync(checkouts, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("starts another agent of a kind whose name is already taken", async () => {
     // muse stands in for the agent: herdr answers agent.start once the launch is typed into the
     // pane, so the kind needs no program behind it and no real agent runs
@@ -822,6 +1221,13 @@ describe("workspace and discovery endpoints", () => {
       ["/api/workspace/move", { workspace_id: "x", insert_index: -1 }, "invalid_index"],
       ["/api/workspace/close", {}, "missing_workspace_id"],
       ["/api/pane/rename", {}, "missing_pane_id"],
+      ["/api/pane/focus", {}, "missing_pane_id"],
+      ["/api/pane/swap", { pane_id: "x", direction: "right", target_pane_id: "y" }, "invalid_pane_swap"],
+      ["/api/pane/swap", { pane_id: "x", target_pane_id: "" }, "invalid_target_pane_id"],
+      ["/api/layout/ratio", {}, "missing_tab_id"],
+      ["/api/layout/ratio", { tab_id: "x", path: [0], ratio: 0.5 }, "invalid_path"],
+      ["/api/layout/ratio", { tab_id: "x", path: [], ratio: 1 }, "invalid_ratio"],
+      ["/api/agent/rename", {}, "missing_pane_id"],
     ] as const) {
       const res = await fetch(`${base()}${path}`, {
         method: "POST",
@@ -862,6 +1268,47 @@ describe("GET /api/session", () => {
       expect(typeof ws.label).toBe("string");
     }
     expect(body.snapshot.panes.length).toBeGreaterThan(0);
+  });
+});
+
+describe("POST /api/pane/find viewport results", () => {
+  let workspaceId: string;
+  let paneId: string;
+  beforeAll(async () => {
+    const created = await workspaceCreate({ cwd: stateDir, label: "herdr-web-ui-test-find-response" });
+    workspaceId = created.workspace.workspace_id;
+    paneId = created.root_pane.pane_id;
+    const ready = herdrRpc("pane.wait_for_output", {
+      pane_id: paneId, source: "visible", match: { type: "substring", value: "find_response_ready" }, timeout_ms: 10000,
+    }, undefined, 12000);
+    await herdrRpc("pane.send_input", { pane_id: paneId, text: "printf 'find_response_%s\\n' ready; exec cat", keys: ["enter"] });
+    await ready;
+  }, 15000);
+  afterAll(async () => { if (workspaceId) await workspaceClose(workspaceId); });
+
+  it("includes bounded cell ranges and the unchanged shared viewport for jump:false", async () => {
+    const before = await (await fetch(`${base()}/api/pane/scroll?pane_id=${encodeURIComponent(paneId)}`)).json() as { scroll: PaneFindResponse["scroll"] };
+    const response = await fetch(`${base()}/api/pane/find`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pane_id: paneId, query: "find_response_ready", direction: "backward", jump: false }),
+    });
+    expect(response.status).toBe(200);
+    const body: PaneFindResponse = await response.json();
+    expect(body.total).toBe(1);
+    expect(body.matches).toEqual([body.match!]);
+    expect(body.scroll).toEqual(before.scroll);
+    expect(Number.isSafeInteger(body.content_revision)).toBe(true);
+    const after = await (await fetch(`${base()}/api/pane/scroll?pane_id=${encodeURIComponent(paneId)}`)).json() as { scroll: PaneFindResponse["scroll"] };
+    expect(after.scroll).toEqual(before.scroll);
+  });
+
+  it("rejects a non-boolean jump with the shared error envelope", async () => {
+    const response = await fetch(`${base()}/api/pane/find`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pane_id: paneId, query: "ready", direction: "forward", jump: "false" }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: { code: "invalid_jump", message: "jump must be a boolean" } });
   });
 });
 
@@ -1714,6 +2161,82 @@ describe("web push", () => {
     expect(pushed!.vapidValid).toBe(true);
   }, 40_000);
 
+  it("sends no device an alert while a connected page says it is in use, and alerts again once it is not (#751)", async () => {
+    let created: Awaited<ReturnType<typeof workspaceCreate>> | undefined;
+    let dir: string | undefined;
+    let device: FakePushService | undefined;
+    let bridge: ReturnType<typeof createServer> | undefined;
+    let page: RecordingSocket | undefined;
+    try {
+      created = await workspaceCreate({ cwd: tmpdir(), label: "herdr-web-ui-test-push-presence" });
+      const paneId = created.root_pane.pane_id;
+      dir = mkdtempSync(join(tmpdir(), "herdr-web-ui-push-presence-"));
+      device = await startFakePushService();
+      bridge = createServer({ port: 0, hostname: "127.0.0.1", token: "", stateDir: dir, machines: false, pushLoopbackHttp: true,
+        alertTiming: { short: 0, long: 0, longTurn: 0 } });
+      const subscribe = await fetch(`http://127.0.0.1:${bridge.port}/api/push/subscribe`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subscription: device.subscription }),
+      });
+      expect(subscribe.status).toBe(204);
+      page = await RecordingSocket.connect(`ws://127.0.0.1:${bridge.port}/ws`);
+      // a connection's frames are handled in order: the role-ack says the presence before it was read
+      const tell = async (active: boolean): Promise<void> => {
+        page!.seen.length = 0;
+        page!.send({ type: "presence", active });
+        page!.send({ type: "role", mode: "interact" });
+        await page!.waitFor((message) => message.type === "role-ack", "role-ack after presence", 5_000);
+      };
+      const report = async (state: "working" | "blocked"): Promise<boolean> => {
+        // only a frame this report caused may answer it
+        page!.seen.length = 0;
+        await herdrRpc("pane.report_agent", { pane_id: paneId, source: "manual", agent: "claude", state });
+        return page!.waitFor((message) => message.type === "pane-status" && message.pane_id === paneId && message.agent_status === state,
+          `${state} on the page`, 2_500).then(() => true).catch(() => false);
+      };
+      const alerts = () => device!.received.filter((push) => push.payload.pane_id === paneId);
+
+      await tell(true);
+      // the collector may still be subscribing to the new pane: alternate until a blocked lands
+      let blocked = false;
+      for (let attempt = 0; attempt < 8 && !blocked; attempt++) {
+        await report("working");
+        blocked = await report("blocked");
+      }
+      expect(blocked).toBe(true);
+      await bridge.alertsSettled();
+      expect(alerts()).toHaveLength(0);
+
+      await tell(false);
+      expect(await report("working")).toBe(true);
+      expect(await report("blocked")).toBe(true);
+      const pushed = await device.waitFor((push) => push.payload.pane_id === paneId, "alert once no page is in use", 5_000);
+      expect(pushed.payload.body).toBe("waiting for your input");
+
+      // a page that leaves without saying so no longer holds the alerts back
+      await tell(true);
+      page.close();
+      page = undefined;
+      const watcher = await RecordingSocket.connect(`ws://127.0.0.1:${bridge.port}/ws`);
+      page = watcher;
+      // the server reads the close on its own time: alternate until an alert comes, which only
+      // happens once the closed page stopped holding them back
+      let alerted = false;
+      for (let attempt = 0; attempt < 8 && !alerted; attempt++) {
+        expect(await report("working")).toBe(true);
+        expect(await report("blocked")).toBe(true);
+        await bridge.alertsSettled();
+        alerted = alerts().length === 2;
+      }
+      expect(alerted).toBe(true);
+    } finally {
+      page?.close();
+      bridge?.stop();
+      device?.stop();
+      if (created) await workspaceClose(created.workspace.workspace_id).catch(() => undefined);
+      if (dir) rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("reports a Codex unknown after work as done over WS and HTTP and delivers its completion push", async () => {
     // Exercise the real collector -> CompletionTracker -> PushService path using
     // manually reported statuses in owned panes. No Codex request or real device.
@@ -2284,6 +2807,10 @@ describe("PC management API", () => {
     expect(data.machines[0]).toMatchObject({ id: "local", kind: "local" });
     const local = await fetch(`${base()}/api/machines/local/session`);
     expect(local.status).toBe(200);
+    const viaAlias = await fetch(`${base()}/api/machines/local/integrations`);
+    expect(viaAlias.status).toBe(200);
+    const direct = await fetch(`${base()}/api/integrations`);
+    expect(await viaAlias.json()).toEqual(await direct.json());
   });
   it("rejects CSRF, malformed targets and remote forwarding outside the allowlist", async () => {
     for (const headers of [{}, { "x-herdr-machine": "1", origin: "https://evil.invalid" }, { "x-herdr-machine": "1", "sec-fetch-site": "cross-site" }] as Record<string, string>[]) {
@@ -2343,7 +2870,7 @@ it("refuses cross-origin changes while allowing same-origin and CLI requests", a
   const base = `http://127.0.0.1:${instance.port}`;
   const created = await workspaceCreate({ cwd: root, label: "herdr-web-ui-test-origin" });
   try {
-    for (const path of ["pane/input", "pane/keys", "pane/close", "workspace/create", "tab/create", "tab/rename", "tab/close", "push/subscribe"]) {
+    for (const path of ["pane/input", "pane/keys", "pane/close", "pane/focus", "layout/ratio", "workspace/create", "tab/create", "tab/rename", "tab/close", "tab/move", "push/subscribe"]) {
       const response = await fetch(`${base}/api/${path}`, { method: "POST", headers: { origin: "http://other.example", "content-type": "text/plain" }, body: JSON.stringify({ pane_id: created.root_pane.pane_id, text: "must not type", keys: ["Enter"] }) });
       expect(response.status).toBe(403);
       expect(await response.json()).toMatchObject({ error: { code: "invalid_origin" } });

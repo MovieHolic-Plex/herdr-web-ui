@@ -8,6 +8,7 @@ import "./PendingMessages.css";
 
 interface Props {
   messages: PendingMessageView[];
+  active?: boolean;
   connected: boolean;
   blocked: boolean;
   unsaved: boolean;
@@ -16,14 +17,29 @@ interface Props {
   onDiscard: (id: string) => Promise<void>;
 }
 
+/**
+ * What a row says of its state. A held message waits for Send now only while this connection
+ * holds it on the bridge: a copy restored from storage (another tab's live hold, or one from before
+ * a reload) is reviewed first, since the tab that held it may still send it.
+ */
+export function pendingStatus(message: Pick<PendingMessageView, "state" | "error" | "serverOwned">, busy: boolean, t: (text: string) => string): string {
+  if (busy) return t("Sending…");
+  if (message.state === "queued") return t("Next turn");
+  if (message.state === "held" && !message.error && message.serverOwned) return t("Waits for Send now");
+  if (message.state === "uncertain") return t("Not confirmed. Check the terminal before sending again.");
+  return t("Held message — review and send");
+}
+
 /** Pending text is separate from the transcript; Send now acts on its ID, never on its text. */
-export function PendingMessages({ messages, connected, blocked, unsaved, isBusy, onSendNow, onDiscard }: Props) {
+export function PendingMessages({ messages, active = true, connected, blocked, unsaved, isBusy, onSendNow, onDiscard }: Props) {
   const t = useT();
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const rootRef = useRef<HTMLOListElement | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const restoreFocus = (keyboard: boolean, target: HTMLButtonElement, stack: Element | null, owner: string | null): void => {
     const root = rootRef.current;
-    if (!keyboard || target.isConnected || !stack?.isConnected || stack.getAttribute("data-pane-owner") !== owner) return;
+    if (!activeRef.current || !keyboard || target.isConnected || !stack?.isConnected || stack.getAttribute("data-pane-owner") !== owner) return;
     const next = root?.querySelector<HTMLButtonElement>("button:not(:disabled)")
       ?? stack.querySelector<HTMLTextAreaElement>(".composer-text");
     next?.focus({ preventScroll: true });
@@ -33,7 +49,7 @@ export function PendingMessages({ messages, connected, blocked, unsaved, isBusy,
     {messages.map((message) => {
       const busy = isBusy(message.id) || message.state === "sending";
       const uncertain = message.state === "uncertain";
-      const status = busy ? t("Sending…") : message.state === "queued" ? t("Next turn") : uncertain ? t("Not confirmed. Check the terminal before sending again.") : t("Held message — review and send");
+      const status = pendingStatus(message, busy, t);
       return <li key={message.id} className="pending-message" data-state={message.state}>
         <div className="pending-message-bubble" aria-busy={busy || undefined}>{message.text}</div>
         <div className="pending-message-meta">

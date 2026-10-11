@@ -10,7 +10,7 @@ function clock() {
 describe("BackgroundWait", () => {
   it("accepts the first working baseline after count-only discovery without overwriting later events", () => {
     const waits = new BackgroundWait(clock().now);
-    waits.running("p1", 1, 100);
+    waits.running("p1", 1, 0);
     waits.seed("p1", "working");
     expect(waits.status("p1", "done")).toBe(true);
     waits.seed("p1", "working");
@@ -97,7 +97,7 @@ describe("BackgroundWait", () => {
     const time = clock();
     const waits = new BackgroundWait(time.now);
     waits.status("p1", "working");
-    waits.running("p1", 1, 100);
+    waits.running("p1", 1, time.now());
     waits.status("p1", "done");
     time.pass(WAIT_LIMIT_MS - 1);
     expect(waits.tick()).toEqual([]);
@@ -106,8 +106,44 @@ describe("BackgroundWait", () => {
     // seen meanwhile (done to idle): still the same rest, and still past the limit
     expect(waits.status("p1", "idle")).toBe(false);
     waits.status("p1", "working");
-    waits.running("p1", 1, 200);
+    waits.running("p1", 1, time.now());
     expect(waits.status("p1", "done")).toBe(true);
+  });
+
+  it("associates delayed prompts with their first observed rest, not discovery or automatic resumes", () => {
+    const time = clock();
+    const waits = new BackgroundWait(time.now);
+    waits.status("p1", "working");
+    time.pass(10);
+    waits.status("p1", "done");
+    time.pass(10);
+    expect(waits.running("p1", 1, 0)).toBe(true);
+    // A later human prompt is not discovered until after two rest transitions.
+    const prompt = time.now();
+    waits.status("p1", "working");
+    time.pass(10);
+    waits.status("p1", "done");
+    time.pass(10);
+    waits.status("p1", "working");
+    waits.status("p1", "done");
+    waits.running("p1", 1, prompt);
+    time.pass(WAIT_LIMIT_MS - 11);
+    expect(waits.waiting("p1")).toBe(true);
+    expect(waits.tick()).toEqual([]);
+    time.pass(1);
+    expect(waits.tick()).toEqual(["p1"]);
+    waits.running("p1", 1, null);
+    waits.status("p1", "working");
+    time.pass(WAIT_LIMIT_MS);
+    waits.status("p1", "done");
+    waits.running("p1", 1, prompt);
+    expect(waits.waiting("p1")).toBe(false);
+    // A new prompt later than every observed rest cannot borrow any old transition or grace.
+    time.pass(1);
+    waits.running("p1", 0, time.now());
+    expect(waits.waiting("p1")).toBe(false);
+    waits.running("p1", 1, time.now());
+    expect(waits.waiting("p1")).toBe(false);
   });
 
   it("holds only an observed busy-to-rest transition and never masks blocked", () => {

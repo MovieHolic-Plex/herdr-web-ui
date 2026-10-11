@@ -7,6 +7,7 @@ import type { AppActions } from "./actions.ts";
 
 export const SHORTCUTS = [
   { id: "palette", label: "Command palette", keys: ["Mod", "Shift", "K"] },
+  { id: "find", label: "Find in terminal", keys: ["Mod", "Shift", "F"] },
   { id: "toggle-view", label: "Switch chat / terminal", keys: ["Mod", "Shift", "J"] },
   { id: "toggle-sidebar", label: "Toggle sidebar", keys: ["Mod", "Shift", "B"] },
   // Mod+Shift+N keeps working where the browser lets it through (the installed app), but Chrome
@@ -34,6 +35,7 @@ export interface ShortcutEventLike {
 
 const KEY_TO_ID: Readonly<Record<string, ShortcutId>> = {
   k: "palette",
+  f: "find",
   j: "toggle-view",
   b: "toggle-sidebar",
   n: "new-session",
@@ -92,20 +94,22 @@ export function isVoiceShortcut(event: ShortcutEventLike, platformIsMac: boolean
 
 /**
  * Mod+Shift+ArrowUp/ArrowDown move the selection in a text field (on a Mac Cmd+Shift+↑ selects to
- * the start of the text): in the message box or any other field they stay the field's, and switch
- * panes everywhere else, the terminal included (its own input element is xterm's, not a field to edit).
+ * the start of the text): in the message box or any other field with text they stay the field's, and
+ * switch panes everywhere else: an empty field, which has nothing to select, and the terminal (its
+ * own input element is xterm's, not a field to edit).
  */
 export interface KeyTargetLike {
   tagName?: string;
   type?: string;
   isContentEditable?: boolean;
+  value?: string;
   classList?: { contains(name: string): boolean };
 }
 
 export function keepsArrowsForText(target: KeyTargetLike | EventTarget | null): boolean {
   if (target === null || typeof target !== "object" || !("tagName" in target)) return false;
   const element = target as KeyTargetLike;
-  if (element.classList?.contains("xterm-helper-textarea")) return false;
+  if (element.classList?.contains("xterm-helper-textarea") || element.value === "") return false;
   if (element.isContentEditable) return true;
   const tag = element.tagName;
   if (tag === "TEXTAREA") return true;
@@ -149,6 +153,9 @@ export function useShortcuts(actions: AppActions, enabled: boolean): void {
       switch (shortcut) {
         case "palette":
           actions.openPalette();
+          break;
+        case "find":
+          actions.openFind();
           break;
         case "toggle-view":
           actions.toggleView();

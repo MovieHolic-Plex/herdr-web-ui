@@ -154,9 +154,9 @@ const CLASS_ROLES: Partial<Record<HighlightTokenClass, SyntaxRole>> = {
 const ROLES: readonly (SyntaxRole | null)[] = [null, "keyword", "string", "number", "comment", "function", "type", "variable", "meta", "inserted", "deleted"];
 const ROLE_INDEX = new Map(ROLES.map((role, index) => [role, index]));
 
-/** The text a view shows: "\r\n" read as "\n", and a final "\n" ends the last line instead of starting one. */
+/** Normalize line endings without discarding source whitespace from rendered text and selection. */
 export function normalizeCode(code: string): string {
-  return code.replace(/\r\n/g, "\n").replace(/\n$/, "");
+  return code.replace(/\r\n/g, "\n");
 }
 
 /** Uncolored lines, in the same shape as tokenized ones, so a view never tells the two apart. */
