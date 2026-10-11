@@ -7,6 +7,7 @@ import type { AgentKind } from "../../shared/protocol.ts";
 import { ApiError } from "../lib/api.ts";
 import { AgentPicker, rememberAgent, rememberedAgent } from "./AgentPicker.tsx";
 import { DirectoryBrowser } from "./DirectoryBrowser.tsx";
+import { RecentFolderChips } from "./RecentFolderChips.tsx";
 import { useMachineApi, useMachineId } from "../lib/machineContext.tsx";
 import { useT } from "../lib/i18n.ts";
 import { nativeModalOver, useFocusTrap } from "../lib/useFocusTrap.ts";
@@ -47,7 +48,7 @@ export interface DialogFields {
 
 /** how long the fields rest before the address follows them: Safari refuses a burst of history writes */
 const DRAFT_MS = 400;
-/** recent folders offered: one row a phone swipes sideways, rows that wrap on a wider screen */
+/** recent folders offered: one row a phone swipes sideways; a wider screen fits what one row holds and lists the rest under "+N" */
 const RECENT_FOLDERS_SHOWN = 8;
 
 function directoryBasename(value: string): string {
@@ -206,13 +207,8 @@ export function NewSessionDialog({ open, defaultCwd, tab = null, onClose, onCrea
           )}
           {!tab && shownFolders.length > 0 && <div className="field new-session-recents">
             <span className="field-label" id="new-session-recents">{t("Recent folders")}</span>
-            <div className="new-session-folder-chips" role="group" aria-labelledby="new-session-recents">
-              {shownFolders.map((path) => <button type="button" className="btn new-session-folder-chip" key={path}
-                disabled={fieldsDisabled} title={path} aria-label={t("Use folder {path}", { path })}
-                onClick={() => { setCwd(path); setBrowsing(false); }}>
-                <FolderOpen aria-hidden="true" /><span>{directoryBasename(path)}</span>
-              </button>)}
-            </div>
+            <RecentFolderChips folders={shownFolders} disabled={fieldsDisabled} labelledBy="new-session-recents" basename={directoryBasename}
+              onPick={(path) => { setCwd(path); setBrowsing(false); }} />
           </div>}
           <label className="field">
             <span className="field-label">{t("Name")}</span>

@@ -23,6 +23,7 @@ export const JA: Record<string, string> = {
   "Search moves the pane for every client.": "検索すると接続中の全クライアントのペイン画面が移動します。",
   "Recent folders": "最近のフォルダー",
   "Use folder {path}": "フォルダー {path} を使用",
+  "{n} more recent folders": "最近のフォルダーをあと {n} 件",
   "Dismiss": "閉じる",
   "Waiting for terminal input…": "端末の入力準備中…",
   "Paused while you use another window": "別のウィンドウを使っている間は一時停止中",

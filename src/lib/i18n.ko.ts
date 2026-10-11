@@ -21,6 +21,7 @@ export const KO: Record<string, string> = {
   "Search moves the pane for every client.": "검색하면 연결된 모든 클라이언트의 패널 화면이 이동합니다.",
   "Recent folders": "최근 폴더",
   "Use folder {path}": "{path} 폴더 사용",
+  "{n} more recent folders": "최근 폴더 {n}개 더",
   "Dismiss": "닫기",
   "Waiting for terminal input…": "터미널 입력 준비 중…",
   "Paused while you use another window": "다른 창을 쓰는 동안 일시 정지됨",

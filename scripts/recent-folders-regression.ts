@@ -122,12 +122,34 @@ try {
           await openNew();
           const dialog = page.getByRole("dialog");
           const chip = dialog.getByRole("button", { name: `${project} 폴더 사용`, exact: true });
-          const betaChip = dialog.getByRole("button", { name: `${other} 폴더 사용`, exact: true });
           await chip.waitFor();
           await dialog.locator(".agent-picker-trigger", { hasText: "Codex" }).waitFor();
-          const chips = dialog.locator(".new-session-folder-chip");
+          const chips = dialog.locator('[role="group"] .new-session-folder-chip:not(.new-session-folder-more)');
+          const more = dialog.locator('[role="group"] .new-session-folder-more');
+          const titles = (from: typeof chips) => from.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("title")));
+          // what the dialog offers: its chips, then on a wider screen what "+N" lists, in order
+          const offered = async (): Promise<(string | null)[]> => {
+            const shown = await titles(chips);
+            if (await more.count() === 0) return shown;
+            assert.notEqual(width, 390, "a phone swipes its row and has no +N");
+            await more.click();
+            const menu = page.getByRole("menu", { name: "최근 폴더", exact: true });
+            await menu.waitFor();
+            const rest = await titles(menu.getByRole("menuitem"));
+            assert.equal(await more.innerText(), `+${rest.length}`);
+            await page.keyboard.press("Escape");
+            await menu.waitFor({ state: "detached" });
+            assert.equal(await dialog.isVisible(), true, "Escape closes the list, not the dialog");
+            return [...shown, ...rest];
+          };
+          const pickFolder = async (path: string): Promise<void> => {
+            const button = dialog.getByRole("button", { name: `${path} 폴더 사용`, exact: true });
+            if (await button.count() > 0) { await button.click(); return; }
+            await more.click();
+            await page.getByRole("menu", { name: "최근 폴더", exact: true }).getByRole("menuitem").and(page.locator(`[title="${path}"]`)).click();
+          };
           const submit = dialog.locator('button[type="submit"]');
-          assert.deepEqual(await chips.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("title"))), ["/older/one", other, project], "folders only seen in panes come behind the one kept");
+          assert.deepEqual(await offered(), ["/older/one", other, project], "folders only seen in panes come behind the one kept");
           assert.equal(new Set(await chips.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top))).size, 1, "recent folders stay on one row");
           // a phone swipes the row sideways; a wider screen has room for it
           if (width === 390) assert.equal(await dialog.locator(".new-session-folder-chips").evaluate((node) => getComputedStyle(node).overflowX), "auto");
@@ -147,7 +169,7 @@ try {
           await submit.click();
           assert.deepEqual((await request).postDataJSON(), { cwd: project, label: null, agent: { kind: "codex" } });
           assert.equal(await chip.isDisabled(), true);
-          assert.equal(await dialog.locator(".new-session-folder-chip:not(:disabled)").count(), 0);
+          assert.equal(await dialog.locator('[role="group"] .new-session-folder-chip:not(:disabled)').count(), 0);
           await page.keyboard.press("Escape");
           assert.equal(await dialog.isVisible(), true);
           gate.resolve();
@@ -169,30 +191,34 @@ try {
           await openNew();
           await chip.waitFor();
           // the folder a workspace was started in is first now; a worktree and a temporary folder are left out
-          assert.deepEqual(await chips.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("title"))), [project, "/older/one", other, "/older/two"]);
+          assert.deepEqual(await offered(), [project, "/older/one", other, "/older/two"]);
+          if (width !== 390) assert.equal(new Set(await chips.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top))).size, 1, "a wider screen keeps one row too, the rest under +N");
+          if (width !== 390) assert.equal(await more.count(), 1, "four folders with a long name are more than the row holds: +N lists the rest");
+          // the measuring row behind the chips adds no width the dialog could scroll to
+          assert.equal(await dialog.locator(".modal-body").evaluate((node) => node.scrollWidth <= node.clientWidth), true, "the dialog never scrolls sideways");
           if (width === 390) assert.equal(new Set(await chips.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().top))).size, 1, "a phone keeps them on one row");
           failCreate = true;
-          await betaChip.click();
+          await pickFolder(other);
           await submit.click();
           await dialog.getByRole("alert").filter({ hasText: "폴더를 찾을 수 없습니다" }).waitFor();
-          assert.equal(await betaChip.isEnabled(), true);
-          assert.equal(await dialog.locator(".new-session-folder-chip").first().getAttribute("title"), project);
-          assert.equal(await chips.count(), 4);
+          assert.equal(await chips.first().isEnabled(), true);
+          assert.equal(await chips.first().getAttribute("title"), project);
+          assert.equal((await offered()).length, 4);
           failCreate = false;
           partialFailure = true;
           const partialResponse = page.waitForResponse((response) => response.url().endsWith("/api/workspace/create"));
           await submit.click();
           const partial: WorkspaceCreated = await (await partialResponse).json();
           await dialog.getByRole("alert").filter({ hasText: "Controlled agent failure" }).waitFor();
-          assert.equal(await dialog.locator(".new-session-folder-chip:not(:disabled)").count(), 0);
-          assert.equal(await dialog.locator(".new-session-folder-chip").first().getAttribute("title"), project);
+          assert.equal(await dialog.locator('[role="group"] .new-session-folder-chip:not(:disabled)').count(), 0);
+          assert.equal(await chips.first().getAttribute("title"), project);
           const beforeOpen = requests;
           await submit.click();
           await dialog.waitFor({ state: "detached" });
           await page.locator(`.workspace-select[data-pane="${partial.pane_id}"][aria-current="true"]`).waitFor({ state: "attached" });
           assert.equal(requests, beforeOpen, "Open after partial failure never creates another workspace");
           assert.deepEqual(errors, []);
-          console.log(`PASS recent folders ${width} ${theme}: snapshot seed behind kept folders, closed workspace, reload, PC isolation, worktrees and temporary folders left out, one swiped row on a phone, chip fills Directory, a start moves its folder first, pending, focus trap, failed-start order`);
+          console.log(`PASS recent folders ${width} ${theme}: snapshot seed behind kept folders, closed workspace, reload, PC isolation, worktrees and temporary folders left out, one swiped row on a phone, one row and +N on a wider screen, chip fills Directory, a start moves its folder first, pending, focus trap, failed-start order`);
         } finally {
           gate.resolve();
           await context.close();

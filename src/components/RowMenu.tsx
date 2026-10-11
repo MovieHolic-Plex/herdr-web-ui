@@ -53,6 +53,8 @@ interface Props {
   /** which edge of the button the popover lines up with: its right one (a row's ⋯), or its left one (a tab) */
   align?: "start" | "end";
   onClose: () => void;
+  /** `paths`: each hint is a path; the menu is wider and a long path gives way before its label */
+  variant?: "paths";
 }
 
 const GAP = 4;
@@ -61,7 +63,7 @@ const POPOVER_ITEMS = '[role="menuitem"], [role="menuitemcheckbox"]';
 // the sheet is modal: its Cancel is one of the stops
 const SHEET_ITEMS = '.row-sheet-item, .row-sheet-cancel';
 
-export function RowMenu({ anchor, point, restoreFocusTo, title, subtitle, header, items, align = "end", onClose }: Props) {
+export function RowMenu({ anchor, point, restoreFocusTo, title, subtitle, header, items, align = "end", onClose, variant }: Props) {
   const t = useT();
   const sheet = useMediaQuery(SHEET_QUERY);
   const surface = useRef<HTMLDivElement>(null);
@@ -206,7 +208,7 @@ export function RowMenu({ anchor, point, restoreFocusTo, title, subtitle, header
   }
 
   return createPortal(
-    <div ref={surface} className="menu row-menu" role="menu" aria-label={title} style={place ?? { visibility: "hidden" }} onKeyDown={onKeyDown} onBlur={onBlur}>
+    <div ref={surface} className={`menu row-menu${anchor.closest('[aria-modal="true"]') ? " is-over-modal" : ""}${variant === "paths" ? " row-menu-paths" : ""}`} role="menu" aria-label={title} style={place ?? { visibility: "hidden" }} onKeyDown={onKeyDown} onBlur={onBlur}>
       {header && <div className="row-menu-header" role="presentation">{header}</div>}
       {items.map((item) => (
         <Fragment key={item.id}>

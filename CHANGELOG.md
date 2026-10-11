@@ -7,13 +7,6 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
 
 ## [Unreleased]
 
-### Fixed
-- The file viewer draws the HTML a README is written with (a centered logo, a row of badges and
-  links, `<details>`) as markdown instead of showing its tags as text: paragraphs and headings,
-  centered where `align="center"` says so, links, images with their width, emphasis and line breaks.
-  Other tags are left out with their text kept; comments, scripts and styles are dropped. Images from
-  other sites still show their alt text, as before. An agent's chat message keeps HTML as text.
-
 ### Added
 - **Settings → Composer → Send queued messages automatically** (on by default). Turned off, a
   message sent while the agent works waits under the message box until you press **Send now**,
@@ -23,15 +16,25 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
   ([#836](https://github.com/devswha/herdr-web-ui/pull/836))
 
 ### Changed
+- **Open in a new tab** on a markdown file opens a page of just the document, with its name, path,
+  **Open raw file** and **Download** above it, instead of a second copy of the whole app with the
+  file viewer over it. A link in the document to another file opens there, from the document's
+  folder, and Back returns. Links made before (`?file=…`) still open the app with the viewer.
 - New workspace's recent folders leave out worktree checkouts (herdr's under `~/.herdr/worktrees`
   and the linked worktrees a PC has open) and temporary folders such as `/tmp`, and offer up to
-  eight folders instead of three: a phone swipes them sideways on one row, a wider screen wraps them.
+  eight folders instead of three on one row: a phone swipes it sideways; a wider screen shows as
+  many as the row holds, then a **+N** chip that lists the rest with their whole paths.
 - A pane's plan moved from the header into the background-task button by the message box: the
   button starts with **Plan** and how many steps are done (`2/5`), and opens one list with the
   plan's steps first and the background tasks below. The plan's flow of boxes, its dialog and the
   **Plan flow** and **Plan count in the header** settings are gone. ([#846](https://github.com/devswha/herdr-web-ui/pull/846))
 
 ### Fixed
+- The file viewer draws the HTML a README is written with (a centered logo, a row of badges and
+  links, `<details>`) as markdown instead of showing its tags as text: paragraphs and headings,
+  centered where `align="center"` says so, links, images with their width, emphasis and line breaks.
+  Other tags are left out with their text kept; comments, scripts and styles are dropped. Images from
+  other sites still show their alt text, as before. An agent's chat message keeps HTML as text.
 - On a phone, Back closes every dialog drawn as a sheet the way it closes a ⋯ menu: the plan, the
   command palette, confirmations, the file list, the worktree dialog, Rename pane and the diagram
   lightbox. It used to open the pane before under the dialog, which stayed up. A wider screen keeps

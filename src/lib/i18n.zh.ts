@@ -25,6 +25,7 @@ export const ZH: Record<string, string> = {
   "Search moves the pane for every client.": "搜索会移动所有已连接客户端的窗格视图。",
   "Recent folders": "最近的文件夹",
   "Use folder {path}": "使用文件夹 {path}",
+  "{n} more recent folders": "另外 {n} 个最近的文件夹",
   "Dismiss": "关闭",
   "Waiting for terminal input…": "正在准备终端输入…",
   "Paused while you use another window": "使用其他窗口时已暂停",
