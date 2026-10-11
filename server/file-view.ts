@@ -124,8 +124,13 @@ function pageFile(ref: string, folder: string): string | null {
   if (!value || /^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("/") || value.startsWith("\\") || value.startsWith("#")) return null;
   let relative: string;
   try { relative = decodeURIComponent(value.split(/[?#]/)[0]!); } catch { return null; }
+  // decoded, it may name a root, a drive or a share (`%5C%5Chost%5Cshare`): on Windows, resolving
+  // that would reach out to the share before any check, so it never gets that far
+  if (!relative || isAbsolute(relative) || /^[\\/]/.test(relative) || /^[a-z]:/i.test(relative)) return null;
+  const target = resolve(folder, relative);
+  if (!target.startsWith(folder + sep)) return null;
   try {
-    const file = realpathSync(resolve(folder, relative));
+    const file = realpathSync(target);
     if (!file.startsWith(folder + sep) || file.slice(folder.length + 1).split(sep).some((part) => part.startsWith("."))) return null;
     return statSync(file).isFile() ? file : null;
   } catch { return null; }
@@ -183,6 +188,19 @@ export function pageWithLocalFiles(path: string): string {
       },
     })
     .transform(readFileSync(path, "utf8"));
+}
+
+/**
+ * A file read asked for by another site's page as a picture, script or fetch, not a navigation:
+ * a rendered page (which has no origin) naming this server's files to learn which exist, or any
+ * other site doing the same where the server lets a request in without a cookie. A navigation (a
+ * new tab, a download, Android's PDF "Open" button) and a browser that sends no Fetch Metadata
+ * still pass.
+ */
+export function crossSiteFileRead(request: Request): boolean {
+  const site = request.headers.get("sec-fetch-site");
+  if (site === null || site === "same-origin" || site === "none") return false;
+  return request.headers.get("sec-fetch-mode") !== "navigate";
 }
 
 /** Whether `fileResponse` can draw this file as a page, given `render`. */

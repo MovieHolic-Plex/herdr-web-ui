@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { fileInfo, fileResponse, resolveFilePath } from "./file-view.ts";
+import { crossSiteFileRead, fileInfo, fileResponse, resolveFilePath } from "./file-view.ts";
 
 describe("file view", () => {
   const roots: string[] = [];
@@ -87,6 +87,7 @@ describe("file view", () => {
       `<img id="up" src="../outside.png"><img id="link" src="linked.png"><img id="hidden" src=".ssh/key.png">`,
       `<img id="env" src=".env"><img id="text" src="notes.txt"><script id="notjs" src="notes.txt"></script>`,
       `<img id="cdn" src="https://example.com/a.png"><img id="rooted" src="/etc/hosts">`,
+      `<img id="unc" src="%5C%5Chost%5Cshare%5Ca.png"><img id="drive" src="C%3A%5Ca.png"><img id="slash" src="%2Fetc%2Fhosts">`,
     ].join(""));
     const html = await fileResponse(fileInfo(join(site, "report.html"))!, false, true).text();
     // its own files, in its folder or below, as the kind of file each element takes
@@ -94,12 +95,24 @@ describe("file view", () => {
     expect(html).toContain(`<script>document.title = 'drawn'; '<\\/script>';</script>`);
     expect(html).toContain(`<img id="shot" src="data:image/png;base64,${png.toString("base64")}">`);
     // nothing above its folder, through a symlink, under a hidden name, or of another kind
-    for (const [id, src] of [["up", "../outside.png"], ["link", "linked.png"], ["hidden", ".ssh/key.png"], ["env", ".env"], ["text", "notes.txt"], ["cdn", "https://example.com/a.png"], ["rooted", "/etc/hosts"]]) {
+    for (const [id, src] of [["up", "../outside.png"], ["link", "linked.png"], ["hidden", ".ssh/key.png"], ["env", ".env"], ["text", "notes.txt"], ["cdn", "https://example.com/a.png"], ["rooted", "/etc/hosts"], ["unc", "%5C%5Chost%5Cshare%5Ca.png"], ["drive", "C%3A%5Ca.png"], ["slash", "%2Fetc%2Fhosts"]]) {
       expect(html).toContain(`<img id="${id}" src="${src}">`);
     }
     expect(html).toContain(`<script id="notjs" src="notes.txt"></script>`);
     expect(html).not.toContain("secret");
     expect(html).not.toContain("private notes");
+  });
+
+  it("refuses another site's page loading a file, but not a navigation or this app", () => {
+    const ask = (headers: Record<string, string>) => crossSiteFileRead(new Request("http://localhost/api/fs/file?path=/x", { headers }));
+    expect(ask({ "sec-fetch-site": "cross-site", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" })).toBe(true);
+    expect(ask({ "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" })).toBe(true);
+    // a new tab, a download or Android's PDF "Open" button is a navigation from anywhere
+    expect(ask({ "sec-fetch-site": "cross-site", "sec-fetch-mode": "navigate" })).toBe(false);
+    expect(ask({ "sec-fetch-site": "same-origin", "sec-fetch-mode": "no-cors" })).toBe(false);
+    expect(ask({ "sec-fetch-site": "none", "sec-fetch-mode": "navigate" })).toBe(false);
+    // a browser that sends no Fetch Metadata is let through as before
+    expect(ask({})).toBe(false);
   });
 });
 
