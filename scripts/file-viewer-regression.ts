@@ -526,6 +526,7 @@ try {
   const output = page.locator(".chat-tool-output pre").last();
   assert.equal(await output.innerText(), `${shotPath} (1600, 1000) -> (1255, 960)\nsaved shots/report.html\ndisplay image 1: [image/png]`, "the output reads as it was written");
   assert.equal(await output.getByRole("button", { name: "image/png" }).count(), 0, "a MIME type is not a file");
+  if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "tool-output-links.png") });
   await output.getByRole("button", { name: shotPath, exact: true }).tap();
   const shot = page.getByRole("dialog", { name: "t00000.png", exact: true });
   await shot.locator("img.file-viewer-media").waitFor();
@@ -543,6 +544,7 @@ try {
   await frame.getByText("no storage", { exact: true }).waitFor();
   // a picture beside the page is put into it, so it draws though the page may ask this server for nothing
   await frame.getByText("picture drawn", { exact: true }).waitFor();
+  if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "html-page-open.png") });
   assert.equal(await report.locator(".file-viewer-page").getAttribute("sandbox"), "allow-scripts");
   if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "tool-output-html-page.png") });
   await report.getByRole("button", { name: "Source", exact: true }).click();
