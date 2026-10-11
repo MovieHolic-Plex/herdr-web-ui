@@ -544,7 +544,6 @@ try {
   await frame.getByText("no storage", { exact: true }).waitFor();
   // a picture beside the page is put into it, so it draws though the page may ask this server for nothing
   await frame.getByText("picture drawn", { exact: true }).waitFor();
-  if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "html-page-open.png") });
   assert.equal(await report.locator(".file-viewer-page").getAttribute("sandbox"), "allow-scripts");
   if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "tool-output-html-page.png") });
   await report.getByRole("button", { name: "Source", exact: true }).click();
