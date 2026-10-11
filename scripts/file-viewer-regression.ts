@@ -46,7 +46,8 @@ mkdirSync(join(root, "shots"));
 // a 1x1 PNG
 writeFileSync(join(root, "shots", "t00000.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==", "base64"));
 // a page whose script runs, and reports what it may not reach: the network and this app's storage
-writeFileSync(join(root, "shots", "report.html"), `<!doctype html><meta charset="utf-8"><title>Report</title><body><h1 id="ran">static</h1><p id="net">waiting</p><p id="store"></p><script>
+writeFileSync(join(root, "shots", "report.html"), `<!doctype html><meta charset="utf-8"><title>Report</title><body><h1 id="ran">static</h1><p id="net">waiting</p><p id="store"></p><img id="shot" alt="shot" src="t00000.png"><p id="pic">no picture</p><script>
+document.getElementById("shot").decode().then(() => { document.getElementById("pic").textContent = "picture drawn"; }, () => {});
 document.getElementById("ran").textContent = "script ran";
 try { localStorage.length; document.getElementById("store").textContent = "storage reachable"; } catch { document.getElementById("store").textContent = "no storage"; }
 fetch("/api/health").then(() => { document.getElementById("net").textContent = "network reachable"; }, () => { document.getElementById("net").textContent = "network blocked"; });
@@ -515,6 +516,8 @@ try {
   await frame.getByText("script ran", { exact: true }).waitFor();
   await frame.getByText("network blocked", { exact: true }).waitFor();
   await frame.getByText("no storage", { exact: true }).waitFor();
+  // a picture beside the page is put into it, so it draws though the page may ask this server for nothing
+  await frame.getByText("picture drawn", { exact: true }).waitFor();
   assert.equal(await report.locator(".file-viewer-page").getAttribute("sandbox"), "allow-scripts");
   if (process.env.UI_EVIDENCE_DIR) await page.screenshot({ path: join(process.env.UI_EVIDENCE_DIR, "tool-output-html-page.png") });
   await report.getByRole("button", { name: "Source", exact: true }).click();

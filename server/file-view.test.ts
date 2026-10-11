@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -65,6 +65,41 @@ describe("file view", () => {
     const text = fileResponse(fileInfo(join(root, "notes.txt"))!, false, true);
     expect(text.headers.get("content-type")).toStartWith("text/plain");
     expect(text.headers.get("content-security-policy")).toStartWith("sandbox;");
+  });
+
+  it("puts a page's own pictures, stylesheet and script into it, and nothing from outside its folder", async () => {
+    const root = temp();
+    const site = join(root, "site");
+    mkdirSync(join(site, "shots"), { recursive: true });
+    mkdirSync(join(site, ".ssh"));
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==", "base64");
+    writeFileSync(join(site, "shots", "a.png"), png);
+    writeFileSync(join(site, "style.css"), "h1 { color: teal }");
+    writeFileSync(join(site, "chart.js"), "document.title = 'drawn'; '</script>';");
+    writeFileSync(join(site, ".ssh", "key.png"), png);
+    writeFileSync(join(site, ".env"), "TOKEN=secret");
+    writeFileSync(join(site, "notes.txt"), "private notes");
+    writeFileSync(join(root, "outside.png"), png);
+    symlinkSync(join(root, "outside.png"), join(site, "linked.png"));
+    writeFileSync(join(site, "report.html"), [
+      `<link rel="stylesheet" href="style.css"><script src="./chart.js"></script>`,
+      `<img id="shot" src="shots/a.png?v=1">`,
+      `<img id="up" src="../outside.png"><img id="link" src="linked.png"><img id="hidden" src=".ssh/key.png">`,
+      `<img id="env" src=".env"><img id="text" src="notes.txt"><script id="notjs" src="notes.txt"></script>`,
+      `<img id="cdn" src="https://example.com/a.png"><img id="rooted" src="/etc/hosts">`,
+    ].join(""));
+    const html = await fileResponse(fileInfo(join(site, "report.html"))!, false, true).text();
+    // its own files, in its folder or below, as the kind of file each element takes
+    expect(html).toContain(`<style>h1 { color: teal }</style>`);
+    expect(html).toContain(`<script>document.title = 'drawn'; '<\\/script>';</script>`);
+    expect(html).toContain(`<img id="shot" src="data:image/png;base64,${png.toString("base64")}">`);
+    // nothing above its folder, through a symlink, under a hidden name, or of another kind
+    for (const [id, src] of [["up", "../outside.png"], ["link", "linked.png"], ["hidden", ".ssh/key.png"], ["env", ".env"], ["text", "notes.txt"], ["cdn", "https://example.com/a.png"], ["rooted", "/etc/hosts"]]) {
+      expect(html).toContain(`<img id="${id}" src="${src}">`);
+    }
+    expect(html).toContain(`<script id="notjs" src="notes.txt"></script>`);
+    expect(html).not.toContain("secret");
+    expect(html).not.toContain("private notes");
   });
 });
 

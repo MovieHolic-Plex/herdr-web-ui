@@ -1,6 +1,6 @@
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve, sep } from "node:path";
 
 import type { FileInfo, FileKind } from "../shared/protocol.ts";
 import { filesNamed } from "./files.ts";
@@ -92,6 +92,8 @@ export function fileInfo(path: string): FileInfo | null {
  * anywhere. It may load pictures, styles, fonts and scripts from https (a page made with a chart
  * library from a CDN draws as it does in any browser), but nothing from this server: an image
  * that loads or fails would tell it which of this PC's files exist. Only this app may frame it.
+ * What it takes from its own folder (a screenshot beside the report, its stylesheet and script)
+ * is put into the page before it is sent (`pageWithLocalFiles`), so it still asks for nothing.
  */
 const PAGE_POLICY = [
   "sandbox allow-scripts",
@@ -105,6 +107,83 @@ const PAGE_POLICY = [
   "form-action 'none'",
   "frame-ancestors 'self'",
 ].join("; ");
+
+/** A page's own files are put into it up to these sizes; a larger one is left as the page names it. */
+const EMBED_FILE_BYTES = 8 * 1024 * 1024;
+const EMBED_TOTAL_BYTES = 32 * 1024 * 1024;
+/** A page larger than this is sent as it is, without its files put into it. */
+const EMBED_PAGE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * The file a page names by a relative URL, when it is a file in the page's folder or below,
+ * symlinks resolved, with no hidden name on the way (`.ssh/`, `.env`); null for a URL with a
+ * scheme, a host or a rooted path, or anything outside.
+ */
+function pageFile(ref: string, folder: string): string | null {
+  const value = ref.trim();
+  if (!value || /^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("/") || value.startsWith("\\") || value.startsWith("#")) return null;
+  let relative: string;
+  try { relative = decodeURIComponent(value.split(/[?#]/)[0]!); } catch { return null; }
+  try {
+    const file = realpathSync(resolve(folder, relative));
+    if (!file.startsWith(folder + sep) || file.slice(folder.length + 1).split(sep).some((part) => part.startsWith("."))) return null;
+    return statSync(file).isFile() ? file : null;
+  } catch { return null; }
+}
+
+/** The page's script can read what is put into it and send it anywhere https reaches (an image
+ * URL, its own navigation), so each element takes only its own kind of file: never a key or a
+ * .env named as a picture's source. */
+const mimeOf = (file: string): string => Bun.file(file).type.split(";")[0] || "application/octet-stream";
+const MEDIA = (mime: string) => /^(?:image|video|audio)\//.test(mime);
+const SCRIPT = (mime: string) => mime === "text/javascript" || mime === "application/javascript";
+const STYLE = (mime: string) => mime === "text/css";
+
+/**
+ * The page with the pictures, media, stylesheets and scripts it takes from its own folder put
+ * into it (as data: URLs and inline blocks): the sandbox may ask this server for nothing, and on
+ * a paired phone it could not anyway (the device cookie is SameSite=Strict, and a sandboxed page
+ * has no origin). Nothing outside the page's folder is read.
+ */
+export function pageWithLocalFiles(path: string): string {
+  const folder = realpathSync(dirname(path));
+  let left = EMBED_TOTAL_BYTES;
+  const take = (ref: string | null, accepts: (mime: string) => boolean): string | null => {
+    const file = ref === null ? null : pageFile(ref, folder);
+    if (file === null || !accepts(mimeOf(file))) return null;
+    const size = statSync(file).size;
+    if (size > EMBED_FILE_BYTES || size > left) return null;
+    left -= size;
+    return file;
+  };
+  const embed = (attribute: string) => ({
+    element(element: HTMLRewriterTypes.Element) {
+      const file = take(element.getAttribute(attribute), MEDIA);
+      if (file !== null) element.setAttribute(attribute, `data:${mimeOf(file)};base64,${readFileSync(file).toString("base64")}`);
+    },
+  });
+  return new HTMLRewriter()
+    .on("img[src]", embed("src"))
+    .on("source[src]", embed("src"))
+    .on("video[src]", embed("src"))
+    .on("video[poster]", embed("poster"))
+    .on("audio[src]", embed("src"))
+    .on("script[src]", {
+      element(element) {
+        const file = take(element.getAttribute("src"), SCRIPT);
+        if (file === null) return;
+        element.removeAttribute("src");
+        element.setInnerContent(readFileSync(file, "utf8").replaceAll("</script", "<\\/script"), { html: true });
+      },
+    })
+    .on('link[rel~="stylesheet" i][href]', {
+      element(element) {
+        const file = take(element.getAttribute("href"), STYLE);
+        if (file !== null) element.replace(`<style>${readFileSync(file, "utf8").replaceAll("</style", "<\\/style")}</style>`, { html: true });
+      },
+    })
+    .transform(readFileSync(path, "utf8"));
+}
 
 /** Whether `fileResponse` can draw this file as a page, given `render`. */
 export function isHtmlPage(info: FileInfo): boolean {
@@ -131,6 +210,10 @@ export function fileResponse(info: FileInfo, download: boolean, render = false):
   else if (info.kind !== "pdf") headers.set("content-security-policy", "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'");
   // text shows as text, whatever its extension says it runs as
   const type = page ? "text/html; charset=utf-8" : info.kind === "text" && info.mime !== "image/svg+xml" ? "text/plain; charset=utf-8" : info.mime;
+  if (page && info.size <= EMBED_PAGE_BYTES) {
+    headers.set("content-type", type);
+    return new Response(pageWithLocalFiles(info.path), { headers });
+  }
   const file = Bun.file(info.path, { type });
   return new Response(file, { headers });
 }
