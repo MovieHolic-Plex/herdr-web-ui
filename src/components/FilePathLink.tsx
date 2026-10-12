@@ -8,6 +8,13 @@ import { useT } from "../lib/i18n.ts";
  * path in it would be an element.
  */
 export const FILE_LINK_LIMIT = 256 * 1024;
+/** Nor does a text with more paths than this link any: a listing of thousands would be thousands of buttons. */
+export const FILE_LINK_COUNT = 500;
+
+/** Whether `text` links its paths at all: short enough, and not a listing of thousands. */
+export function linksFilePaths(text: string): boolean {
+  return text.length <= FILE_LINK_LIMIT && splitFilePaths(text).filter((part) => typeof part !== "string").length <= FILE_LINK_COUNT;
+}
 
 /** A file path the viewer opens: a button that reads as the text or code it replaced. */
 export function FilePathLink({ path, code, open }: { path: string; code: boolean; open: (path: string) => void }) {
@@ -24,5 +31,6 @@ export function linkFilePaths(text: string, open: ((path: string) => void) | nul
   if (open === null || text.length > FILE_LINK_LIMIT) return text;
   const parts = splitFilePaths(text);
   if (parts.length === 1 && typeof parts[0] === "string") return text;
+  if (parts.filter((part) => typeof part !== "string").length > FILE_LINK_COUNT) return text;
   return parts.map((part, index) => typeof part === "string" ? part : <FilePathLink key={index} path={part.path} code={false} open={open} />);
 }

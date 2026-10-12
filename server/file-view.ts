@@ -98,11 +98,13 @@ export function fileInfo(path: string): FileInfo | null {
 const PAGE_POLICY = [
   "sandbox allow-scripts",
   "default-src 'none'",
-  "script-src 'unsafe-inline' 'unsafe-eval' https:",
-  "style-src 'unsafe-inline' https:",
-  "img-src data: blob: https:",
-  "media-src data: blob: https:",
-  "font-src data: https:",
+  // nothing from the web either: the page holds its own folder's files (below), and a script that
+  // could reach any https URL could send them there
+  "script-src 'unsafe-inline' 'unsafe-eval' data:",
+  "style-src 'unsafe-inline' data:",
+  "img-src data: blob:",
+  "media-src data: blob:",
+  "font-src data:",
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'self'",
@@ -113,6 +115,8 @@ const EMBED_FILE_BYTES = 8 * 1024 * 1024;
 const EMBED_TOTAL_BYTES = 32 * 1024 * 1024;
 /** A page larger than this is sent as it is, without its files put into it. */
 const EMBED_PAGE_BYTES = 8 * 1024 * 1024;
+/** Distinct URLs a page may name; past this many the rest are left as they are (each is a filesystem lookup). */
+const EMBED_REFS = 1_000;
 
 /**
  * The file a page names by a relative URL, when it is a file in the page's folder or below,
@@ -136,57 +140,51 @@ function pageFile(ref: string, folder: string): string | null {
   } catch { return null; }
 }
 
-/** The page's script can read what is put into it and send it anywhere https reaches (an image
- * URL, its own navigation), so each element takes only its own kind of file: never a key or a
- * .env named as a picture's source. */
+/** The page's script can read what is put into it, so each element takes only its own kind of
+ * file: never a key or a .env named as a picture's source. */
 const mimeOf = (file: string): string => Bun.file(file).type.split(";")[0] || "application/octet-stream";
 const MEDIA = (mime: string) => /^(?:image|video|audio)\//.test(mime);
 const SCRIPT = (mime: string) => mime === "text/javascript" || mime === "application/javascript";
 const STYLE = (mime: string) => mime === "text/css";
+/** a script element that runs (no type, a JavaScript type, or a module); a data block (`type="text/plain"`) takes no file */
+const RUNS = (type: string | null) => type === null || /^\s*(?:module|(?:text|application)\/(?:x-)?(?:java|ecma)script)?\s*$/i.test(type);
 
 /**
  * The page with the pictures, media, stylesheets and scripts it takes from its own folder put
- * into it (as data: URLs and inline blocks): the sandbox may ask this server for nothing, and on
- * a paired phone it could not anyway (the device cookie is SameSite=Strict, and a sandboxed page
- * has no origin). Nothing outside the page's folder is read.
+ * into it as data: URLs, so the element keeps its attributes (`defer`, `type="module"`, a
+ * stylesheet's `media`): the sandbox may ask this server for nothing, and on a paired phone it
+ * could not anyway (the device cookie is SameSite=Strict, and a sandboxed page has no origin).
+ * Nothing outside the page's folder is read; a URL is resolved once however often it is named.
  */
 export function pageWithLocalFiles(path: string): string {
   const folder = realpathSync(dirname(path));
   let left = EMBED_TOTAL_BYTES;
+  const resolved = new Map<string, string | null>();
   const take = (ref: string | null, accepts: (mime: string) => boolean): string | null => {
-    const file = ref === null ? null : pageFile(ref, folder);
+    if (ref === null) return null;
+    if (!resolved.has(ref)) resolved.set(ref, resolved.size < EMBED_REFS ? pageFile(ref, folder) : null);
+    const file = resolved.get(ref) ?? null;
     if (file === null || !accepts(mimeOf(file))) return null;
     const size = statSync(file).size;
     if (size > EMBED_FILE_BYTES || size > left) return null;
     left -= size;
     return file;
   };
-  const embed = (attribute: string) => ({
+  const embed = (attribute: string, accepts: (mime: string) => boolean, when: (element: HTMLRewriterTypes.Element) => boolean = () => true) => ({
     element(element: HTMLRewriterTypes.Element) {
-      const file = take(element.getAttribute(attribute), MEDIA);
+      if (!when(element)) return;
+      const file = take(element.getAttribute(attribute), accepts);
       if (file !== null) element.setAttribute(attribute, `data:${mimeOf(file)};base64,${readFileSync(file).toString("base64")}`);
     },
   });
   return new HTMLRewriter()
-    .on("img[src]", embed("src"))
-    .on("source[src]", embed("src"))
-    .on("video[src]", embed("src"))
-    .on("video[poster]", embed("poster"))
-    .on("audio[src]", embed("src"))
-    .on("script[src]", {
-      element(element) {
-        const file = take(element.getAttribute("src"), SCRIPT);
-        if (file === null) return;
-        element.removeAttribute("src");
-        element.setInnerContent(readFileSync(file, "utf8").replaceAll("</script", "<\\/script"), { html: true });
-      },
-    })
-    .on('link[rel~="stylesheet" i][href]', {
-      element(element) {
-        const file = take(element.getAttribute("href"), STYLE);
-        if (file !== null) element.replace(`<style>${readFileSync(file, "utf8").replaceAll("</style", "<\\/style")}</style>`, { html: true });
-      },
-    })
+    .on("img[src]", embed("src", MEDIA))
+    .on("source[src]", embed("src", MEDIA))
+    .on("video[src]", embed("src", MEDIA))
+    .on("video[poster]", embed("poster", MEDIA))
+    .on("audio[src]", embed("src", MEDIA))
+    .on("script[src]", embed("src", SCRIPT, (element) => RUNS(element.getAttribute("type"))))
+    .on('link[rel~="stylesheet" i][href]', embed("href", STYLE))
     .transform(readFileSync(path, "utf8"));
 }
 

@@ -3,7 +3,7 @@ import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { canHighlight, countLines, extendLines, LINE_ELEMENT_LIMIT, normalizeCode, plainLines, type Lines } from "../lib/highlight.ts";
 import { highlightedFrom, highlightKnown, highlightOffThread, type Highlighted } from "../lib/highlightOffThread.ts";
 import { useT } from "../lib/i18n.ts";
-import { linkFilePaths } from "./FilePathLink.tsx";
+import { linkFilePaths, linksFilePaths } from "./FilePathLink.tsx";
 import { useSettings } from "../lib/settings.ts";
 import "./HighlightedCode.css";
 
@@ -100,9 +100,11 @@ interface HighlightedCodeProps {
 export const HighlightedCode = memo(function HighlightedCode({ code, language, limit, open = null }: HighlightedCodeProps) {
   const t = useT();
   const { lines, tooLong } = useHighlightedLines(code, language, limit);
+  // the whole block is measured, not each token of each line: a block of short lines is as long as its text
+  const links = useMemo(() => open !== null && linksFilePaths(code), [code, open]);
   return (
     <>
-      <CodeLines lines={lines} open={open} />
+      <CodeLines lines={lines} open={links ? open : null} />
       {tooLong && <p className="hl-note">{t("Too long to highlight")}</p>}
     </>
   );

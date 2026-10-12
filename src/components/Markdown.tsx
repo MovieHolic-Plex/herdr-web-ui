@@ -189,10 +189,15 @@ function List({ block }: { block: ListBlock }) {
   );
 }
 
+/** A fence in no language, or in one that says plain output (a log, a command's answer): the files it names open. */
+const PLAIN_FENCE = /^(?:|text|txt|plain|plaintext|log|console|output|shell-session)$/i;
+
 function CodeBlock({ language, value }: { language: string; value: string }) {
   const t = useT();
   const open = useContext(OpenFileContext);
   const grammar = languageForFence(language);
+  // the tag decides, not the grammar: code in a language with no grammar here is still code
+  const plain = PLAIN_FENCE.test(language.trim().split(/\s+/)[0] ?? "");
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -229,7 +234,7 @@ function CodeBlock({ language, value }: { language: string; value: string }) {
       </div>
       {copyFailed && <p className="markdown-code-error" role="alert">{t("Couldn't copy. Select the text and copy it manually.")}</p>}
       {/* a block in no language is output (a log, a command's answer): the files it names open */}
-      <HighlightedCode code={fold !== null && !expanded ? fold.head : value} language={grammar} limit={CHAT_HIGHLIGHT_LIMIT} open={grammar === null ? open : null} />
+      <HighlightedCode code={fold !== null && !expanded ? fold.head : value} language={grammar} limit={CHAT_HIGHLIGHT_LIMIT} open={plain ? open : null} />
       {fold !== null && (
         <button type="button" className="markdown-code-more" aria-expanded={expanded} onClick={toggle}>
           {expanded ? t("Show less") : t("Show all {n} lines", { n: fold.lines })}

@@ -12,9 +12,9 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
   an agent pasted), open in the file viewer like the paths in its prose: a line such as
   `/tmp/shot/t0.png (1600, 1000) -> (1255, 960)` opens the picture, from a phone or another PC
   as well, since the server reads the file. An HTML file now shows as its page, with a switch to
-  its source: its own script runs in a sandbox with no origin, storage or network, and the
-  pictures, stylesheet and script it takes from its own folder are put into it, so an agent's
-  report with its screenshots draws whole. Files outside that folder, hidden ones such as `.env`,
+  its source: its own script runs in a sandbox with no origin, storage or network (not the web
+  either), and the pictures, stylesheet and script it takes from its own folder are put into it,
+  so an agent's report with its screenshots draws whole. Files outside that folder, hidden ones such as `.env`,
   and anything of another kind than the tag asks for are never put in.
   ([#691](https://github.com/devswha/herdr-web-ui/pull/691) by @MovieHolic-Plex)
 
