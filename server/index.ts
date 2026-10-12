@@ -2581,7 +2581,7 @@ export function createServer(
       }
 
       // static client - public even when the API is gated, so the login UI can load
-      return serveStatic(pathname);
+      return serveStatic(pathname, request.headers.get("accept-encoding"));
       })());
     },
 

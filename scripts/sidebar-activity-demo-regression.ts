@@ -162,7 +162,7 @@ try {
         await page.keyboard.press("Escape");
         const agentRow = agent(page, API);
         const agentSelect = agentRow.locator(".agent-select");
-        // pin an agent that is not first: it must stand above the workspace cards, outside every card
+        // pin an agent that is not first: it stays in its workspace's card, and that card leads the list
         const pinnedRow = agent(page, INFRA);
         const pin = pinnedRow.getByRole("button", { name: `Pin agent: ${INFRA} · infra`, exact: true });
         assert.equal(await pin.count(), 1, "each agent has a pin control named for it and its workspace");
@@ -172,24 +172,27 @@ try {
         await page.keyboard.press("Space");
         await page.waitForFunction((key) => JSON.parse(localStorage.getItem("herdr-web-ui:sidebar-agent-pins") ?? "[]").includes(key), `local:${panes.infra}`);
         assert.equal(await pin.getAttribute("aria-pressed"), "true", "keyboard pin persists the agent and keeps the control's name");
-        assert.equal(await pinFocused(), true, "the star keeps the keyboard focus as it moves above the cards");
+        assert.equal(await pinFocused(), true, "the star keeps the keyboard focus as its card moves up");
         assert.deepEqual(await agentTitles(page), [INFRA, ...AGENTS_HERDR_ORDER.filter((title) => title !== INFRA)], "a pinned agent moves to the top, the rest keep herdr's order");
         const pinnedLayout = () => page.evaluate((title) => {
-          const list = document.querySelector(".agents-sidebar .agent-list")!;
-          const first = list.firstElementChild;
-          return { inCard: [...document.querySelectorAll(".agents-sidebar .agent-group .agent-title")].some((node) => node.textContent === title), firstIsPinnedRow: first?.classList.contains("agent-item") === true && first.querySelector(".agent-title")?.textContent === title };
+          const first = document.querySelector(".agents-sidebar .agent-list")!.firstElementChild;
+          return {
+            inCard: [...document.querySelectorAll(".agents-sidebar .agent-group .agent-title")].some((node) => node.textContent === title),
+            firstCard: first?.classList.contains("agent-group") === true ? first.querySelector(".agent-group-name")?.textContent : null,
+            firstInCard: first?.querySelector(".agent-group-rows .agent-title")?.textContent ?? null,
+          };
         }, INFRA);
-        assert.deepEqual(await pinnedLayout(), { inCard: false, firstIsPinnedRow: true }, "the pinned agent leads the list above the cards, not inside one");
+        assert.deepEqual(await pinnedLayout(), { inCard: true, firstCard: "infra", firstInCard: INFRA }, "the pinned agent stays in its card, first there, and its card leads the list");
         await page.reload();
         await page.locator(".conn-live").waitFor({ state: "attached" });
         await agents(page).first().waitFor({ state: "attached" });
-        assert.deepEqual(await pinnedLayout(), { inCard: false, firstIsPinnedRow: true }, "the pin survives a reload");
+        assert.deepEqual(await pinnedLayout(), { inCard: true, firstCard: "infra", firstInCard: INFRA }, "the pin survives a reload");
         await pin.focus();
         await page.keyboard.press("Enter");
         await page.waitForFunction(() => JSON.parse(localStorage.getItem("herdr-web-ui:sidebar-agent-pins") ?? "[]").length === 0);
-        assert.equal(await pinFocused(), true, "the star keeps the keyboard focus as it moves back into its card");
+        assert.equal(await pinFocused(), true, "the star keeps the keyboard focus as its card moves back");
         assert.deepEqual(await agentTitles(page), AGENTS_HERDR_ORDER, "unpin restores the source order");
-        assert.equal((await pinnedLayout()).inCard, true, "unpinned, the agent returns to its card");
+        assert.equal((await pinnedLayout()).firstCard, "checkout-api", "unpinned, its card returns to herdr's order");
         const refreshedAgentRow = agent(page, API);
         await agentRow.hover();
         assert.equal(await refreshedAgentRow.getByRole("button").count(), 2, "hover keeps selection and pin controls");

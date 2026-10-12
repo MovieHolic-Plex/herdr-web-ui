@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
-import { ArrowUp, FileText, Plus, Square, X } from "lucide-react";
+import { ArrowUp, FileText, Plus, Square, TriangleAlert, X } from "lucide-react";
 
 import "./Composer.css";
 
@@ -874,6 +874,17 @@ export function Composer({
         </div>
       )}
 
+      {/* why the message in the box did not go: on the box's top edge, read with it, its one way on beside it */}
+      {note !== null && (
+        <div className={`composer-note${typeof note === "object" ? " composer-note-offer" : ""}`} role="alert">
+          <TriangleAlert className="composer-note-icon" aria-hidden="true" />
+          <span className="composer-note-text">{typeof note === "string" ? note : note.note}</span>
+          {/* the draft named above, never what has replaced it since: the server checks */}
+          {typeof note === "object" && <button type="button" className="composer-note-action" disabled={!connected || uploading || sending || text.trim().length === 0}
+            onClick={() => send(note.draft)}>{t("Clear it and send")}</button>}
+        </div>
+      )}
+
       <div
         ref={surfaceRef}
         className={`composer-surface${dragging ? " is-dragging" : ""}`}
@@ -1108,15 +1119,6 @@ export function Composer({
           )}
         </div>
       </div>
-      {typeof note === "string" && <div className="composer-note" role="alert">{note}</div>}
-      {note !== null && typeof note === "object" && (
-        <div className="composer-note composer-note-offer" role="alert">
-          <span>{note.note}</span>
-          {/* the draft named above, never what has replaced it since: the server checks */}
-          <button type="button" className="composer-note-action" disabled={!connected || uploading || sending || text.trim().length === 0}
-            onClick={() => send(note.draft)}>{t("Clear it and send")}</button>
-        </div>
-      )}
       {/* said while typing, before the send: after it the browser is already open and the reader is
           already in the state the words describe. Not a block — the text still goes, and pi runs the
           command in the terminal the way its own palette would */}

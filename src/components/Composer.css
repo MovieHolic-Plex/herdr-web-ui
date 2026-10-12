@@ -804,20 +804,40 @@
   color: var(--text-strong);
 }
 
+/* why the message did not go: a band on the box's top edge, the box's own width, so it reads as
+   the box's; a note with its one way on (send over the terminal's draft) keeps the button at its
+   end, or under the reason when the row is too short for both */
 .composer-note {
-  margin-top: var(--space-1);
-  padding: 0 var(--space-2);
-  color: var(--danger-text);
-  font-size: var(--fs-xs);
-}
-
-/* a note with its one way on (send over the terminal's draft): the button after the reason, or
-   under it when the row is too short for both */
-.composer-note-offer {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1) var(--space-2);
+  /* the resize grip's hit area rises above the box: the band stops short of it, so its button is whole */
+  margin-bottom: max(var(--space-2), var(--composer-grip-h));
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  background: var(--danger-tint);
+  border: var(--hairline) solid color-mix(in srgb, var(--status-blocked) 35%, transparent);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-base);
+}
+
+.composer-note-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--status-blocked);
+}
+
+.composer-note-text {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.composer-note-offer .composer-note-action {
+  margin-left: auto;
 }
 
 .composer-note-action {

@@ -7,6 +7,8 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-10-12
+
 ### Added
 - **Settings → Composer → Send queued messages automatically** (on by default). Turned off, a
   message sent while the agent works waits under the message box until you press **Send now**,
@@ -16,18 +18,30 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
   ([#836](https://github.com/devswha/herdr-web-ui/pull/836))
 
 ### Changed
+- With **Workspace cards** on, a pinned agent stays in its workspace's card, first there, and the
+  cards that hold pins come first, instead of the agent leaving its card for the top of the list.
+  ([#852](https://github.com/devswha/herdr-web-ui/pull/852))
 - **Open in a new tab** on a markdown file opens a page of just the document, with its name, path,
   **Open raw file** and **Download** above it, instead of a second copy of the whole app with the
   file viewer over it. A link in the document to another file opens there, from the document's
   folder, and Back returns. Links made before (`?file=…`) still open the app with the viewer.
+  ([#849](https://github.com/devswha/herdr-web-ui/pull/849))
 - New workspace's recent folders leave out worktree checkouts (herdr's under `~/.herdr/worktrees`
   and the linked worktrees a PC has open) and temporary folders such as `/tmp`, and offer up to
-  eight folders instead of three on one row: a phone swipes it sideways; a wider screen shows as
-  many as the row holds, then a **+N** chip that lists the rest with their whole paths.
+  eight folders instead of three: a phone swipes them sideways on one row, a wider screen wraps them.
+  ([#844](https://github.com/devswha/herdr-web-ui/pull/844), [#848](https://github.com/devswha/herdr-web-ui/pull/848))
 - A pane's plan moved from the header into the background-task button by the message box: the
   button starts with **Plan** and how many steps are done (`2/5`), and opens one list with the
   plan's steps first and the background tasks below. The plan's flow of boxes, its dialog and the
   **Plan flow** and **Plan count in the header** settings are gone. ([#846](https://github.com/devswha/herdr-web-ui/pull/846))
+- Reuse immutable chat-message revisions across unrelated renders while retaining mutable-caller change detection.
+  ([#788](https://github.com/devswha/herdr-web-ui/pull/788) by @kilhyeonjun)
+- The reason a chat message did not go (Claude Code's terminal input box holds a draft, the PC
+  needs an update, the send was not confirmed) is a band on the message box's top edge, as wide as
+  the box, with **Clear it and send** at its end, instead of small red text under the box.
+  ([#851](https://github.com/devswha/herdr-web-ui/pull/851))
+- Serve built JavaScript and CSS as Brotli or gzip when accepted, preserving original bytes and static cache/CSP policy.
+  ([#787](https://github.com/devswha/herdr-web-ui/pull/787) by @kilhyeonjun)
 
 ### Fixed
 - The file viewer draws the HTML a README is written with (a centered logo, a row of badges and
@@ -35,35 +49,52 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
   centered where `align="center"` says so, links, images with their width, emphasis and line breaks.
   Other tags are left out with their text kept; comments, scripts and styles are dropped. Images from
   other sites still show their alt text, as before. An agent's chat message keeps HTML as text.
+  ([#847](https://github.com/devswha/herdr-web-ui/pull/847))
 - On a phone, Back closes every dialog drawn as a sheet the way it closes a ⋯ menu: the plan, the
   command palette, confirmations, the file list, the worktree dialog, Rename pane and the diagram
   lightbox. It used to open the pane before under the dialog, which stayed up. A wider screen keeps
   Back for the panes.
+  ([#842](https://github.com/devswha/herdr-web-ui/pull/842))
 - A phone brought back from sleep or the background reconnects as soon as the page is shown or the
   network returns, instead of showing "reconnecting" for up to 5 seconds while the retry delay
   grown during sleep ran out.
+  ([#843](https://github.com/devswha/herdr-web-ui/pull/843))
 - On a phone, the system Back button closes an open ⋯ menu sheet instead of switching to the pane
   opened before, which it did since 0.4.7 made each pane a history entry. A sheet closed by Cancel,
   a swipe or one of its items leaves no extra Back step behind.
+  ([#837](https://github.com/devswha/herdr-web-ui/pull/837))
 - On a phone or other touch screen, a pane shown alone no longer draws its own ellipsis over the
   chat or terminal, under the header's: its actions (rename, split, zoom, close) are in the tab's
   ellipsis menu, between the tab's panes and the tab's own actions. A split pane on a wide touch
   screen keeps its own menu.
+  ([#835](https://github.com/devswha/herdr-web-ui/pull/835))
 - On a phone, a long press on the chat selects text and offers copy as the phone does, instead of
   opening the pane's actions menu; on the terminal it opens no menu either. A right-click, or a
   menu asked for from the keyboard, still opens it.
+  ([#838](https://github.com/devswha/herdr-web-ui/pull/838))
 - With the system's reduce-motion setting on, a running agent's arc in the sidebar stood still,
   so RUN looked like BG (the same arc held still). It now fades in and out instead of turning. ([#841](https://github.com/devswha/herdr-web-ui/pull/841))
 - A phone showing one pane of a split tab no longer resizes the tab's other panes to its own
   screen: they stay mounted behind the one shown and now keep the size the pty has, so a PC
   drawing the split keeps its own sizes. A pane shown again on the phone takes its size then.
+  ([#840](https://github.com/devswha/herdr-web-ui/pull/840))
 - The update line above the pane stays one line on a phone and on a computer: a long sentence ends
   in an ellipsis instead of wrapping its buttons onto a second row, the line after an update closes
   with an × like a PC's line, and an install's step, count and bar share one row. The warning to
   save unsent drafts before a reload is the one line still read in full, so it may wrap.
+  ([#845](https://github.com/devswha/herdr-web-ui/pull/845))
 - A PC window left in front while you used the terminal on a phone stayed at the phone's size
   when you came back, because it never lost the focus and so never took the pane back. A click
   or a key in its terminal now returns the pane to the PC's size. ([#839](https://github.com/devswha/herdr-web-ui/pull/839))
+- A refused answer on a question card (the question changed, or the answer no longer fits it) now
+  stays on the card as an error until the card is replaced, instead of a 2-second note that was easy
+  to miss, so the button no longer looks dead. `POST /api/pane/prompt/answer` logs each request
+  with the pane, whether the prompt id matched, and the outcome; never the answer.
+  ([#793](https://github.com/devswha/herdr-web-ui/pull/793))
+
+### Maintenance
+- The remote-PC runtime is now version 27: every saved PC asks for **Update bridge…** once, so the
+  held messages setting and the precompressed assets reach it.
 
 ## [0.4.7] - 2026-10-12
 
@@ -3147,7 +3178,8 @@ First public version.
 - Installable PWA, a mobile key bar, web push alerts and optional token auth.
 - Distribution as a herdr plugin.
 
-[Unreleased]: https://github.com/devswha/herdr-web-ui/compare/v0.4.7...HEAD
+[Unreleased]: https://github.com/devswha/herdr-web-ui/compare/v0.4.8...HEAD
+[0.4.8]: https://github.com/devswha/herdr-web-ui/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/devswha/herdr-web-ui/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/devswha/herdr-web-ui/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/devswha/herdr-web-ui/compare/v0.4.4...v0.4.5

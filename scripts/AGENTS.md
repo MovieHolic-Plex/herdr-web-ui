@@ -1,6 +1,6 @@
 # scripts/
 
-Build, code generation, CI orchestration and the browser QA harness. `tsconfig.tools.json` typechecks the critical check, build, CI, release and chat-fallback browser entrypoints and their imports; `build-xterm.ts` is also included through `vite.config.ts`. Only the `*.test.ts` files are discovered by a test runner, so the rules that decide whether a check actually runs live in this directory.
+Build, code generation, CI orchestration and the browser QA harness. `tsconfig.tools.json` typechecks the critical check, build, CI, release and chat-fallback browser entrypoints and their imports; `build-xterm.ts` and `compressed-assets.ts` are also included through `vite.config.ts`. Only the `*.test.ts` files are discovered by a test runner, so the rules that decide whether a check actually runs live in this directory.
 
 ## SUITES AND DISCOVERY
 - `ci-tests.ts` globs `{src,shared,server,scripts,telemetry}/**/*.test.ts` and splits the result into exactly two suites with one predicate: a file needs herdr when it ends in `.contract.test.ts`, or it is `server/updater.test.ts`, or it sits under `server/herdr/` or `server/pty/`. Those last three run in the integration suite despite their plain names. A new test that needs a live herdr must take the `.contract.test.ts` name or be added to that predicate; otherwise it lands in the unit suite, where the socket does not exist.

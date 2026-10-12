@@ -14,6 +14,12 @@ bun run dev      # Vite on :5173, proxies /api and /ws
 
 ## Checks
 
+Production builds create Brotli (`.br`) and gzip (`.gz`) sidecars for JavaScript and CSS under
+`dist/assets/`. The static handler negotiates these with `Accept-Encoding` and sends
+`Vary: Accept-Encoding`; a client that excludes every available representation gets 406.
+Older builds without sidecars retain identity responses. The shell and service worker keep
+their revalidation policy, and user files and API responses are never compressed by this path.
+
 `bun run check` runs what CI runs, from the same script (`scripts/check.ts`):
 
 ```bash

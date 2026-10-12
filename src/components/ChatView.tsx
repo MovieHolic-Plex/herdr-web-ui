@@ -1031,7 +1031,7 @@ export const ChatView = memo(function ChatView({ paneId, refreshKey, invalidatio
         ? shownTurns.map((turn, index) => {
             const last = index === shownTurns.length - 1;
             const live = isLiveWorkTurn(turn, last, workStatus, finishedBeforeSend);
-            return <RenderBoundary key={`${paneId}:${historyId ?? ""}:${turn.role}:${turn.ts ?? index}`} resetKey={turnRevision(turn)} fallback={() => <p className="chat-inline-state chat-inline-error">{t("This message can't be shown here. The terminal has it.")}</p>}>
+            return <RenderBoundary key={`${paneId}:${historyId ?? ""}:${turn.role}:${turn.ts ?? index}`} resetKey={turnRevision(turn, true)} fallback={() => <p className="chat-inline-state chat-inline-error">{t("This message can't be shown here. The terminal has it.")}</p>}>
               <Turn paneId={paneId} turn={turn} live={live} waiting={isWaitingWorkTurn(live, agentStatus)} showThinking={settings.showThinking} />
             </RenderBoundary>;
           })

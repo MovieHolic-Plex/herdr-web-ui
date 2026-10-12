@@ -4235,6 +4235,35 @@ Enter to select · ↑/↓ to navigate · Esc to cancel
       expect((await card())!.id).not.toBe(first.id);
     });
   });
+
+  test("logs prompt answer requests with pane_id, prompt_matched and outcome", async () => {
+    const logged: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
+    try {
+      await withPane("codex", "blocked", menu(RESUME), async (pane) => {
+        const prompt = (await card())!;
+        logged.length = 0;
+        expect(await answer(prompt.id, { option_index: 0 })).toEqual({ status: 200, code: undefined });
+        expect(logged.some((line) => line.includes("[prompt/answer]") && line.includes("pane=\"p_1\"") && line.includes("prompt_matched=true") && line.includes("outcome=ok"))).toBe(true);
+        logged.length = 0;
+        expect(await answer(prompt.id, { option_index: 0 })).toEqual({ status: 409, code: "prompt_changed" });
+        expect(logged.some((line) => line.includes("[prompt/answer]") && line.includes("pane=\"p_1\"") && line.includes("prompt_matched=false") && line.includes("outcome=prompt_changed"))).toBe(true);
+        // the pane id is the client's until the snapshot has checked it: no newline or escape of it reaches the log
+        logged.length = 0;
+        const url = new URL("http://127.0.0.1/api/pane/prompt/answer");
+        const forged = "p_1\nFORGED \u001b[2J prompt_matched=true outcome=ok";
+        const response = (await handlePromptRequest(new Request(url, { method: "POST", body: JSON.stringify({ pane_id: forged, prompt_id: prompt.id, option_index: 0 }) }), url, {}))!;
+        expect(response.ok).toBe(false);
+        const line = logged.find((entry) => entry.includes("[prompt/answer]"));
+        expect(line).toBeDefined();
+        expect(line!.includes("\n")).toBe(false);
+        expect(line!.includes("\u001b")).toBe(false);
+        // the forged fields stay inside the quoted id; the line's own fields follow it
+        if (!line!.includes(`pane=${JSON.stringify(forged)} prompt_matched=false outcome=`)) throw new Error(`unexpected log line: ${line}`);
+      });
+    } finally { console.log = originalLog; }
+  });
 });
 
 // fork: Claude Code 2.1.29x screens the readers missed, answered as menus (arrows + enter), never by typing the number

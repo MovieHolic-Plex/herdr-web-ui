@@ -45,8 +45,9 @@ export function pruneSidebarPins(keys: readonly string[], liveKeys: ReadonlySet<
 }
 
 /**
- * Pinned rows in their saved order, and the other rows in the source roster order. herdr order draws
- * `pinned` above the workspace cards and groups only `rest`, so a pin never lifts its unpinned siblings.
+ * Pinned rows in their saved order, and the other rows in the source roster order. With workspace
+ * cards, grouping `pinned` then `rest` keeps each pinned row in its own card, first there, and puts
+ * the cards that hold pins first, in the order of their first pin.
  */
 export function splitPinnedRows<T>(rows: readonly T[], keys: readonly string[], keyOf: (row: T) => string): { pinned: T[]; rest: T[] } {
   const byKey = new Map(rows.map((row) => [keyOf(row), row]));

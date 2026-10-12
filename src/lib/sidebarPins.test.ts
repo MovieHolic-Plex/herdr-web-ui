@@ -40,12 +40,13 @@ describe("sidebar agent pins", () => {
     expect(order(["missing", "b"])).toEqual(["b", "a", "c"]);
   });
 
-  it("leaves an unpinned sibling in its card below every pinned agent", () => {
-    // A1 and A2 share workspace A; A2 then B1 are pinned
+  it("keeps a pinned agent in its card, first there, with the cards that hold pins first", () => {
+    // A1 and A2 share workspace A; C1 then A2 are pinned
     const rows = [{ id: "A1", ws: "A" }, { id: "A2", ws: "A" }, { id: "B1", ws: "B" }, { id: "C1", ws: "C" }];
-    const { pinned, rest } = splitPinnedRows(rows, ["A2", "B1"], (row) => row.id);
-    expect(pinned.map((row) => row.id)).toEqual(["A2", "B1"]);
-    expect(groupRows(rest, (row) => row.ws).map((group) => [group.key, group.rows.map((row) => row.id)])).toEqual([["A", ["A1"]], ["C", ["C1"]]]);
+    const { pinned, rest } = splitPinnedRows(rows, ["C1", "A2"], (row) => row.id);
+    expect(pinned.map((row) => row.id)).toEqual(["C1", "A2"]);
+    expect(groupRows([...pinned, ...rest], (row) => row.ws).map((group) => [group.key, group.rows.map((row) => row.id)]))
+      .toEqual([["C", ["C1"]], ["A", ["A2", "A1"]], ["B", ["B1"]]]);
   });
 
   it("starts with no pins when storage denies the read", () => {
