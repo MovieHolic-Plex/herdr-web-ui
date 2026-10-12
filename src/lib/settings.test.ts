@@ -74,6 +74,15 @@ it("shows the Agents list's pin stars only when they were turned on", () => {
   }
 });
 
+it("draws agent logos in their brand colors unless Mono was chosen", () => {
+  expect(DEFAULT_SETTINGS.agentMarks).toBe("color");
+  expect(sanitizeSettings({}).agentMarks).toBe("color");
+  expect(sanitizeSettings({ agentMarks: "mono" }).agentMarks).toBe("mono");
+  for (const agentMarks of [null, "Mono", "off", 1]) {
+    expect(sanitizeSettings({ agentMarks }).agentMarks).toBe("color");
+  }
+});
+
 it("names the appearance settings changed from their defaults, and no other setting", () => {
   expect(changedSettings(DEFAULT_SETTINGS)).toEqual([]);
   expect(changedSettings({ ...DEFAULT_SETTINGS, agentPins: true, theme: "light", agentCards: true })).toEqual(["theme", "agentCards", "agentPins"]);

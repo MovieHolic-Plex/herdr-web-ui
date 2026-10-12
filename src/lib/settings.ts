@@ -21,6 +21,8 @@ export type Density = "compact" | "comfortable";
 export type SidebarRows = "one" | "two";
 /** the Agents list's order: herdr's workspace order, or a waiting agent first and then the latest change */
 export type AgentOrder = "workspace" | "activity";
+/** how agent logos are drawn: in their brand colors, or without color: Claude's in the text color, the others in grey (data-marks on <html>) */
+export type AgentMarks = "color" | "mono";
 /** what the plan meters count: the share of a limit used, or what is left of it */
 export type UsageCount = "used" | "left";
 /** the limit a plan meter shows: the plan's week, or its short session (5 hours on Claude and Codex) */
@@ -75,6 +77,8 @@ export interface Settings {
   agentPins: boolean;
   /** a DONE opened here since it finished reads as ready, as herdr's own view would make it (per browser and PC) */
   quietOpenedDone: boolean;
+  /** Agent logos: brand colors, or without color, so a list of one agent is not a stripe of tiles */
+  agentMarks: AgentMarks;
   /** the chrome color family, keyed as data-palette in src/styles.css */
   palette: Palette;
   /** xterm font size in px */
@@ -165,7 +169,7 @@ export function changedSettings(settings: Settings): ReportedSetting[] {
  */
 export const SETTING_SCOPE = {
   theme: "shared", palette: "shared", language: "shared", sidebarRows: "shared", agentOrder: "shared", agentCards: "shared",
-  agentPins: "shared", autoSendQueued: "shared", showThinking: "shared", quickReplies: "shared",
+  agentPins: "shared", agentMarks: "shared", autoSendQueued: "shared", showThinking: "shared", quickReplies: "shared",
   showQuickReplies: "shared", showSuggestionChip: "shared", showUsage: "shared", usageCount: "shared", usagePace: "shared",
   usageGlance: "shared", usageOrder: "shared", usageHidden: "shared", highlightCode: "shared", defaultView: "device",
   terminalInputMode: "device", keyBarExtras: "device", keyBarItems: "device", shortcutOverrides: "device", density: "device",
@@ -193,6 +197,7 @@ export const DEFAULT_SETTINGS: Settings = {
   agentCards: false,
   agentPins: false,
   quietOpenedDone: false,
+  agentMarks: "color",
   palette: "amber",
   terminalFontSize: 13,
   terminalCursorStyle: "block",
@@ -351,6 +356,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     agentCards: record["agentCards"] === true,
     agentPins: record["agentPins"] === true,
     quietOpenedDone: record["quietOpenedDone"] === true,
+    agentMarks: record["agentMarks"] === "color" || record["agentMarks"] === "mono" ? record["agentMarks"] : DEFAULT_SETTINGS.agentMarks,
     palette: record["palette"] === "amber" || record["palette"] === "report" || record["palette"] === "charcoal" || record["palette"] === "catppuccin" || record["palette"] === "lilac" || record["palette"] === "forest" ? record["palette"] : DEFAULT_SETTINGS.palette,
     terminalFontSize: typeof font === "number" && Number.isFinite(font) ? clampFont(font) : DEFAULT_SETTINGS.terminalFontSize,
     terminalCursorStyle: TERMINAL_CURSOR_STYLES.includes(record["terminalCursorStyle"] as TerminalCursorStyle)
@@ -475,6 +481,8 @@ function applyToDocument(settings: Settings, resolved: ResolvedTheme, language: 
   root.dataset["density"] = settings.density;
   root.dataset["palette"] = settings.palette;
   root.dataset["chatWidth"] = settings.chatWidth;
+  // src/components/AgentMark.css keys the mono logos on it
+  root.dataset["marks"] = settings.agentMarks;
   // ChatView.css scales its type tokens by this: the chosen size over the density's
   root.style.setProperty("--chat-scale", String(chatFontSize(settings) / CHAT_BASE_FONT[settings.density]));
   // ChatView.css sets the transcript's prose in this, and falls back to --font-ui without it
