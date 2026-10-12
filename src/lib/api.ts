@@ -1,3 +1,4 @@
+import type { PreferencesChange, SharedPreferences } from "../../shared/preferences.ts";
 import { machinePath, type BridgeHealth, type HerdrIdentity, type Machine, type SetupAction, type SetupJob, type SetupRequest } from "../../shared/machines.ts";
 import type {
   AgentKind,
@@ -106,6 +107,19 @@ export async function requestHerdrUpdate(): Promise<void> {
 }
 
 /** Anonymous install and update counts; null from a server that sends none (404). */
+/** What every browser of this server shares (shared/preferences.ts); null where the server predates it. */
+export async function fetchPreferences(): Promise<SharedPreferences | null> {
+  try { return await getJson<SharedPreferences>("/api/preferences"); }
+  catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; }
+}
+
+export async function savePreferences(body: PreferencesChange): Promise<SharedPreferences> {
+  const url = "/api/preferences";
+  const response = await fetch(url, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!response.ok) throw await errorFrom(url, response);
+  return (await response.json()) as SharedPreferences;
+}
+
 export async function fetchTelemetry(): Promise<TelemetryStatus | null> {
   try { return await getJson<TelemetryStatus>("/api/telemetry"); }
   catch (error) { if (error instanceof ApiError && error.status === 404) return null; throw error; }

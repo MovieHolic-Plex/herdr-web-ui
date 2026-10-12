@@ -1,4 +1,5 @@
-import type { SetupAction, SetupRequest } from "../shared/machines.ts";
+import type { MachineEvent, SetupAction, SetupRequest } from "../shared/machines.ts";
+import type { SharedPreferences } from "../shared/preferences.ts";
 import { MachineManager } from "./machines.ts";
 import { canSendSecret, sameOrigin } from "./machine-security.ts";
 import { isJsonObject, jsonResponse } from "./http.ts";
@@ -22,7 +23,8 @@ function transportFailure(id: string, path: string, error: unknown): Response {
     : fail("machine_unavailable", "The PC connection was interrupted; retry after reconnecting", 502);
 }
 
-export async function handleMachineRequest(request: Request, manager: MachineManager, onRevoke?: (close: () => void) => () => void): Promise<Response> {
+export async function handleMachineRequest(request: Request, manager: MachineManager, onRevoke?: (close: () => void) => () => void,
+  preferences?: { get(): SharedPreferences; subscribe(listener: (preferences: SharedPreferences) => void): () => void }): Promise<Response> {
   const url = new URL(request.url);
   // A PC's file opens as this PC's /api/fs/file does, from any navigation: reading it changes
   // nothing, and Chrome on Android shows a PDF in the viewer's frame as an "Open" button whose
@@ -39,11 +41,12 @@ export async function handleMachineRequest(request: Request, manager: MachineMan
     if (!parts.length && request.method === "GET") return jsonResponse({ machines: manager.list() });
     if (parts[0] === "events" && parts.length === 1 && request.method === "GET") {
       let stop: (() => void) | undefined;
+      let stopPreferences: (() => void) | undefined;
       let unwatchDevice: (() => void) | undefined;
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       let close = () => {};
       const cleanup = () => {
-        stop?.(); unwatchDevice?.(); clearInterval(heartbeat);
+        stop?.(); stopPreferences?.(); unwatchDevice?.(); clearInterval(heartbeat);
         request.signal.removeEventListener("abort", close);
       };
       const encoder = new TextEncoder();
@@ -55,6 +58,11 @@ export async function handleMachineRequest(request: Request, manager: MachineMan
           if (closed) return;
           const send = (text: string) => { if (closed) return; if ((controller.desiredSize ?? 0) < -4) { close(); return; } try { controller.enqueue(encoder.encode(text)); } catch { close(); } };
           stop = manager.subscribe((event) => send(`data: ${JSON.stringify(event)}\n\n`));
+          // the shared preferences ride the same stream, one connection per browser; the document
+          // opens it, so a page that reconnects (or whose GET lost a race) holds the latest
+          const sendPreferences = (shared: SharedPreferences) => send(`data: ${JSON.stringify({ type: "preferences", preferences: shared } satisfies MachineEvent)}\n\n`);
+          stopPreferences = preferences?.subscribe(sendPreferences);
+          if (preferences) sendPreferences(preferences.get());
           if (closed) { cleanup(); return; }
           heartbeat = setInterval(() => send(": heartbeat\n\n"), 15_000);
           request.signal.addEventListener("abort", close, { once: true });
