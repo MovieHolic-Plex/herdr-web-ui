@@ -588,6 +588,8 @@ export const KO: Record<string, string> = {
   "Next turn": "다음 차례",
   "Waits for Send now": "지금 보내기를 누르면 보냅니다",
   "Send queued messages automatically": "대기 메시지 자동 전송",
+  "Enter twice sends now": "엔터 두 번으로 바로 보내기",
+  "While the agent works, pressing Enter again right after sending sends that message at once, as Send now does, instead of waiting for the turn to end.": "에이전트가 작업하는 동안 메시지를 보낸 직후 Enter를 한 번 더 누르면, 턴이 끝나길 기다리지 않고 지금 보내기처럼 그 메시지를 바로 보냅니다.",
   "A message sent while the agent works goes by itself when the turn ends. When off, it waits until you press Send now.": "에이전트가 작업 중일 때 보낸 메시지는 턴이 끝나면 저절로 전송됩니다. 끄면 지금 보내기를 누를 때까지 기다립니다.",
   "Discard saved copy": "저장된 사본 버리기",
   "Update this PC to send messages in the next turn. Your draft stayed here.": "다음 차례에 메시지를 보내려면 이 PC를 업데이트하세요. 작성한 메시지는 여기에 남아 있습니다.",

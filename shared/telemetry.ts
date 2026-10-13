@@ -49,6 +49,7 @@ export interface TelemetrySettings {
   chatWidth: "narrow" | "default" | "wide" | "full";
   enterSends: boolean;
   autoSendQueued: boolean;
+  enterTwiceSteers: boolean;
   showThinking: boolean;
   keepScreenOn: boolean;
   language: "system" | "en" | "zh" | "ja" | "ko" | "tr";
@@ -124,6 +125,7 @@ const TELEMETRY_SETTINGS_VALIDATORS = {
   chatWidth: oneOf(["narrow", "default", "wide", "full"]),
   enterSends: booleanValue,
   autoSendQueued: booleanValue,
+  enterTwiceSteers: booleanValue,
   showThinking: booleanValue,
   keepScreenOn: booleanValue,
   language: oneOf(["system", "en", "zh", "ja", "ko", "tr"]),

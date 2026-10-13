@@ -592,6 +592,8 @@ export const ZH: Record<string, string> = {
   "Next turn": "下一轮",
   "Waits for Send now": "按“立即发送”后发送",
   "Send queued messages automatically": "自动发送排队消息",
+  "Enter twice sends now": "按两次 Enter 立即发送",
+  "While the agent works, pressing Enter again right after sending sends that message at once, as Send now does, instead of waiting for the turn to end.": "在代理工作时，发送后立即再按一次 Enter，会像“立即发送”一样马上发出该消息，而不必等本轮结束。",
   "A message sent while the agent works goes by itself when the turn ends. When off, it waits until you press Send now.": "智能体工作时发送的消息会在本轮结束后自动发出。关闭后，消息会等到你按下“立即发送”。",
   "Discard saved copy": "丢弃已保存的副本",
   "Update this PC to send messages in the next turn. Your draft stayed here.": "请更新这台电脑后再发送下一轮消息。草稿仍保留在这里。",

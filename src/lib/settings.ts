@@ -117,6 +117,8 @@ export interface Settings {
   attachLimit: number;
   /** true: a message sent while the agent works goes by itself when the turn ends; false: it waits for Send now */
   autoSendQueued: boolean;
+  /** true: Enter again within a second of sending a message that waits for the turn sends it now (steers), as Send now does */
+  enterTwiceSteers: boolean;
   /** show the agent's folded reasoning blocks in the chat view */
   showThinking: boolean;
   /** request a screen wake lock while a pane is open in this visible tab */
@@ -204,6 +206,7 @@ export function telemetrySettingsSnapshot(settings: Settings): TelemetrySettings
     chatWidth: settings.chatWidth,
     enterSends: settings.enterSends,
     autoSendQueued: settings.autoSendQueued,
+    enterTwiceSteers: settings.enterTwiceSteers,
     showThinking: settings.showThinking,
     keepScreenOn: settings.keepScreenOn,
     language: settings.language,
@@ -253,7 +256,7 @@ export const SETTING_SCOPE = {
   terminalInputMode: "device", keyBarExtras: "device", keyBarItems: "device", shortcutOverrides: "device", pageOverlapRows: "device", chatPageKeys: "device", density: "device",
   quietOpenedDone: "device", terminalFontSize: "device", terminalCursorStyle: "device", terminalCursorBlink: "device",
   terminalWheelSpeed: "device", terminalFontFamily: "device", paneClipboard: "device", releasePaneAway: "device",
-  narrowPaneFont: "device", chatFontSize: "device", chatFontFamily: "device", chatWidth: "device", enterSends: "device", attachLimit: "device",
+  narrowPaneFont: "device", chatFontSize: "device", chatFontFamily: "device", chatWidth: "device", enterSends: "device", enterTwiceSteers: "device", attachLimit: "device",
   keepScreenOn: "device", alertsOn: "device", alertInput: "device", alertDone: "device", alertInApp: "device", alertSound: "device",
   voiceInput: "device", voiceLanguage: "device", voicePolishChat: "device", voicePolishTerminal: "device",
   // Viewer layout follows this screen, as chatWidth does; highlighting remains shared.
@@ -295,6 +298,7 @@ export const DEFAULT_SETTINGS: Settings = {
   enterSends: true,
   attachLimit: 20,
   autoSendQueued: true,
+  enterTwiceSteers: true,
   showThinking: false,
   keepScreenOn: false,
   language: "system",
@@ -470,6 +474,7 @@ export function sanitizeSettings(raw: unknown): Settings {
       ? Math.min(ATTACH_LIMIT_MAX, Math.max(ATTACH_LIMIT_MIN, Math.round(record["attachLimit"])))
       : DEFAULT_SETTINGS.attachLimit,
     autoSendQueued: typeof record["autoSendQueued"] === "boolean" ? record["autoSendQueued"] : DEFAULT_SETTINGS.autoSendQueued,
+    enterTwiceSteers: typeof record["enterTwiceSteers"] === "boolean" ? record["enterTwiceSteers"] : DEFAULT_SETTINGS.enterTwiceSteers,
     showThinking: typeof record["showThinking"] === "boolean" ? record["showThinking"] : DEFAULT_SETTINGS.showThinking,
     keepScreenOn: typeof record["keepScreenOn"] === "boolean" ? record["keepScreenOn"] : DEFAULT_SETTINGS.keepScreenOn,
     language: LANGUAGE_SETTINGS.includes(record["language"] as LanguageSetting) ? record["language"] as LanguageSetting : DEFAULT_SETTINGS.language,

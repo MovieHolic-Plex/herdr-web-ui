@@ -58,6 +58,8 @@ import { narrowPaneFontSize } from "../lib/narrowPaneFont.ts";
 const RESIZE_SETTLE_MS = 120;
 /** How long a tab is out of use before it lets go of its pane: a glance at another window keeps it. */
 const RELEASE_AFTER_MS = 1000;
+/** A second Enter this soon after a message was queued sends it now (Settings → Enter twice sends now). */
+const SEND_QUEUED_AGAIN_MS = 1000;
 
 // Only a tab the user is in drives the shared grid. A window left open behind another app
 // still turns visible when the screen wakes, and reconnects, reloads or moves on to the next pane
@@ -2139,6 +2141,10 @@ export function PaneTerminal({
     return () => { observer.disconnect(); stack.style.removeProperty("--composer-lift"); stack.style.removeProperty("--composer-room"); setGreetingRoom(true); };
   }, [greetingDue, paneId]);
 
+  // the message the composer queued last, by time, and by ID once the bridge holds it: a second
+  // Enter sends it now, also when that Enter came before the bridge's receipt did
+  const lastQueuedRef = useRef<{ pane: string; at: number; id: string | null; now: boolean } | null>(null);
+  const actOnPendingRef = useRef<(id: string, action: "steer" | "discard") => Promise<void>>(async () => {});
   const composerSend = useCallback(
     (text: string, clearDraft?: string): boolean | string | DraftRefusal | Promise<boolean | string | DraftRefusal> => {
       const pane = paneRef.current;
@@ -2170,7 +2176,16 @@ export function PaneTerminal({
       const queued = composerDelivery(agent, agentStatus);
       const delivery: SubmitDelivery = queued === "queue" && !settings.autoSendQueued ? "hold" : queued;
       const result = submitComposerMessage(text, delivery, delivery === "immediate" ? clearDraft : undefined);
-      return result === null ? false : result.then((answer) => answer.ok ? true : submitRefusal(answer.code, answer.message, answer.draft));
+      if (result === null) return false;
+      const queuedSend = delivery !== "immediate" && pane !== null ? { pane, at: Date.now(), id: null as string | null, now: false } : null;
+      if (queuedSend) lastQueuedRef.current = queuedSend;
+      return result.then((answer) => {
+        if (queuedSend !== null && answer.ok && answer.pending) {
+          queuedSend.id = answer.pending.id;
+          if (queuedSend.now) void actOnPendingRef.current(answer.pending.id, "steer");
+        }
+        return answer.ok ? true : submitRefusal(answer.code, answer.message, answer.draft);
+      });
     },
     [agent, agentStatus, answerPanePrompt, answering, heldByOpenQueue, submitComposerMessage, queueStore, machineId, settings.autoSendQueued],
   );
@@ -2218,6 +2233,16 @@ export function PaneTerminal({
       pendingMessages.fail(owner, id, { code: "disconnected", message: t("Not confirmed. Check the terminal before sending again.") }, true);
     } finally { pendingMessages.end(owner, id); }
   }, [answering, ended, heldByOpenQueue, paneId, queueOwner, submitComposerMessage, submitRetention]);
+  actOnPendingRef.current = actOnPending;
+
+  /** The second Enter of two: the message the first one queued is sent now, once, as its Send now would. */
+  const sendQueuedNow = useCallback((): boolean => {
+    const last = lastQueuedRef.current;
+    if (!settings.enterTwiceSteers || last === null || last.now || last.pane !== paneRef.current || Date.now() - last.at > SEND_QUEUED_AGAIN_MS) return false;
+    last.now = true;
+    if (last.id !== null) void actOnPending(last.id, "steer");
+    return true;
+  }, [actOnPending, settings.enterTwiceSteers]);
 
 
   // Capture the owner's pane for the entire upload batch, even across a pane switch.
@@ -2521,6 +2546,7 @@ export function PaneTerminal({
           ) : null}
           onSend={composerSend}
           onAbort={abortTurn}
+          onSendQueuedNow={sendQueuedNow}
           onUploadImage={uploadImage}
         />
       )}

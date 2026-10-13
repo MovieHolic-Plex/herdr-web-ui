@@ -78,6 +78,9 @@ export interface ComposerProps {
    * promise settles to any of them */
   onSend: (text: string, clearDraft?: string) => boolean | string | DraftRefusal | Promise<boolean | string | DraftRefusal>;
   onAbort: () => void;
+  /** a send key with nothing new to send (the box empty, or the last message still on its way): sends
+   * the message just queued now, as its Send now does; false when there is none to send, or not this soon */
+  onSendQueuedNow?: () => boolean;
   onUploadImage: (file: File) => Promise<string>;
 }
 
@@ -237,6 +240,7 @@ export function Composer({
   greeting = null,
   onSend,
   onAbort,
+  onSendQueuedNow,
   onUploadImage,
 }: ComposerProps) {
   const t = useT();
@@ -863,9 +867,11 @@ export function Composer({
         : (event.metaKey || event.ctrlKey) && !event.shiftKey;
       if (!shouldSend) return;
       event.preventDefault();
+      // the second Enter of two: the message the first one queued goes now
+      if (onSendQueuedNow && (sending || (textRef.current.trim() === "" && attachments.length === 0)) && onSendQueuedNow()) return;
       send();
     },
-    [agentStatus, choices, connected, menuDismissed, menuOpen, offered, onAbort, selectCompletion, selectedIndex, send, setTextAndCaret, settings.enterSends, trigger],
+    [agentStatus, attachments.length, choices, connected, menuDismissed, menuOpen, offered, onAbort, onSendQueuedNow, selectCompletion, selectedIndex, send, sending, setTextAndCaret, settings.enterSends, trigger],
   );
 
   const onPaste = useCallback(

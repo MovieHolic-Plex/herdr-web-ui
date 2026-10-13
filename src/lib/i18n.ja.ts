@@ -590,6 +590,8 @@ export const JA: Record<string, string> = {
   "Next turn": "次のターン",
   "Waits for Send now": "「今すぐ送信」で送信します",
   "Send queued messages automatically": "送信待ちメッセージを自動で送信",
+  "Enter twice sends now": "Enter 2 回で今すぐ送信",
+  "While the agent works, pressing Enter again right after sending sends that message at once, as Send now does, instead of waiting for the turn to end.": "エージェントの作業中、送信した直後にもう一度 Enter を押すと、ターンの終わりを待たずに「今すぐ送信」と同じくそのメッセージをすぐに送ります。",
   "A message sent while the agent works goes by itself when the turn ends. When off, it waits until you press Send now.": "エージェントの作業中に送ったメッセージは、ターンが終わると自動で送信されます。オフにすると、「今すぐ送信」を押すまで待ちます。",
   "Discard saved copy": "保存したコピーを破棄",
   "Update this PC to send messages in the next turn. Your draft stayed here.": "次のターンにメッセージを送るには、このPCを更新してください。入力したメッセージはここに残っています。",

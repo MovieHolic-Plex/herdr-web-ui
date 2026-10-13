@@ -558,6 +558,8 @@ export const TR: Record<string, string> = {
   "Next turn": "Sıradaki tur",
   "Waits for Send now": "Şimdi gönder'e basınca gönderilir",
   "Send queued messages automatically": "Kuyruktaki mesajları otomatik gönder",
+  "Enter twice sends now": "İki kez Enter şimdi gönderir",
+  "While the agent works, pressing Enter again right after sending sends that message at once, as Send now does, instead of waiting for the turn to end.": "Ajan çalışırken, gönderdikten hemen sonra Enter'a bir kez daha basmak, turun bitmesini beklemeden o mesajı Şimdi gönder gibi hemen gönderir.",
   "A message sent while the agent works goes by itself when the turn ends. When off, it waits until you press Send now.": "Ajan çalışırken gönderilen mesaj, tur bitince kendiliğinden gider. Kapalıyken Şimdi gönder'e basana kadar bekler.",
   "Discard saved copy": "Kayıtlı kopyayı sil",
   "Update this PC to send messages in the next turn. Your draft stayed here.": "Mesajları sıradaki turda göndermek için bu bilgisayarı güncelleyin. Taslağınız burada kaldı.",

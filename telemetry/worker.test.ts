@@ -31,6 +31,7 @@ const settings: TelemetrySettings = {
   chatWidth: "narrow",
   enterSends: true,
   autoSendQueued: false,
+  enterTwiceSteers: true,
   showThinking: true,
   keepScreenOn: false,
   language: "ko",

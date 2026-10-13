@@ -44,6 +44,11 @@ it("takes twenty files from one paste, pick or drop unless this device chose ano
   expect(sanitizeSettings({ attachLimit: 0 }).attachLimit).toBe(1);
   expect(sanitizeSettings({ attachLimit: "8" }).attachLimit).toBe(20);
   expect(SETTING_SCOPE.attachLimit).toBe("device");
+  // a second Enter sends a queued message now unless turned off; a keyboard habit, so this device's
+  expect(sanitizeSettings({}).enterTwiceSteers).toBe(true);
+  expect(sanitizeSettings({ enterTwiceSteers: false }).enterTwiceSteers).toBe(false);
+  expect(sanitizeSettings({ enterTwiceSteers: "no" }).enterTwiceSteers).toBe(true);
+  expect(SETTING_SCOPE.enterTwiceSteers).toBe("device");
 });
 
 it("keeps the terminal cursor at a block that blinks unless a saved shape or blink says otherwise", () => {
@@ -111,6 +116,7 @@ describe("telemetry settings snapshot", () => {
       chatFontSize: 11,
       chatWidth: "wide",
       autoSendQueued: false,
+      enterTwiceSteers: false,
       language: "ko",
       alertDone: "always",
       usageCount: "left",
@@ -139,6 +145,7 @@ describe("telemetry settings snapshot", () => {
       chatFontSize: 11,
       chatWidth: "wide",
       autoSendQueued: false,
+      enterTwiceSteers: false,
       language: "ko",
       alertDone: "always",
       usageCount: "left",

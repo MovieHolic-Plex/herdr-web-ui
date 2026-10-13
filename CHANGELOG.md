@@ -8,6 +8,11 @@ between releases do not reach them. Remote-PC runtime bundles are versioned sepa
 ## [Unreleased]
 
 ### Added
+- Enter twice sends a message now while the agent works: the first Enter queues it as before, and
+  a second within a second (on the empty box, or while the first is still on its way) sends it at
+  once, as its Send now does — steering the running turn instead of waiting for it to end. It
+  works the same with automatic sending off. **Settings → Chat → Enter twice sends now** turns
+  it off.
 - **Settings → Phone & devices → Portal** gives this PC a public HTTPS address through
   [Portal](https://github.com/gosuda/portal-tunnel), with no account and no domain of your own.
   With Portal v2.6.1 or later installed, **Start** runs it on a relay you enter, dropping any
